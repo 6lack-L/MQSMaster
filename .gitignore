@@ -18,7 +18,7 @@ mqs/
 *.lock
 .vscode/
 src/backtest/data/*
-src/backtest/data/**/*
+src/backtest/data/bacfill_cache/*.parquet
 # Jupyter Notebook outputs (keeps diffs clean)
 *.ipynb
 **/.ipynb
