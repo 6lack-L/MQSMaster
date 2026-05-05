@@ -357,7 +357,7 @@ def main(num_batches: Optional[int] = None):
                     elif trade_log is None:
                         raise ValueError("Backtest returned None instead of a trade log.")
                     for portfolio in range(len(trade_log)):
-                        if len(trade_log[portfolio]) == 0:
+                        if trade_log[portfolio] is None or len(trade_log[portfolio]) == 0:
                             logging.info("No trades executed for portfolio")
                             continue
                         for trade in trade_log[portfolio]:
