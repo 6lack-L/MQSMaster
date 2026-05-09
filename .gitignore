@@ -6,6 +6,7 @@ __pycache__/
 *.py[cod]
 data/
 MQS/
+NLP/fetch_state/
 NLP/finbert-combined-final/
 finber_eval_results/
 local-gpt2-model/
@@ -17,8 +18,7 @@ mqs/
 .env
 *.lock
 .vscode/
-src/backtest/data/*
-src/backtest/data/bacfill_cache/*.parquet
+src/backtest/data/
 # Jupyter Notebook outputs (keeps diffs clean)
 *.ipynb
 **/.ipynb

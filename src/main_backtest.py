@@ -44,7 +44,7 @@ Backtest configuration parameters:
 - BACKTEST_NUM_BATCHES: An optional integer specifying the number of batches to use for parallel backtest execution. If set to None, the batch count will be automatically determined based on the number of CPU cores and the number of portfolios.
 """
 START_DATE = "2025-01-01"
-END_DATE = "2025-06-05"
+END_DATE = "2025-09-05"
 INITIAL_CAPITAL = 1000000.0
 SLIPPAGE = 0.000001  # 0.1 basis point
 BACKTEST_MODE = ""  # or "fast"
