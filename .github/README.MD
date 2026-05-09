@@ -38,7 +38,7 @@ run the following command to install pip and uv:
 
 Open your terminal/cmd prompt, navigate to the directory where you want to store the project, and run the following commands one after the other:
 
-    0. `git clone https://github.com/MUNQuantSociety/MQSMaster/tree/main`
+    0. `git clone https://github.com/MUNQuantSociety/MQSMaster.git`
     0. `cd MQSMaster`
 
 #### Step 2: Create and Activate the Virtual Environment
