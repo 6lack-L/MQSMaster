@@ -351,13 +351,13 @@ class FeatureEngineer:
 
         for ticker, group in data.groupby("ticker"):
             indicators = {
-                "sma_21": SimpleMovingAverage(ticker, period=21),
-                "rsi_14": RelativeStrengthIndex(ticker, period=14),
-                "rmi_14": RelativeMomentumIndex(ticker, period=14, momentum_period=3),
-                "roc_21": RateOfChange(ticker, period=21),
-                "atr_14": AverageTrueRange(ticker, period=14),
-                "dma_21": DisplacedMovingAverage(ticker, period=21, displacement=5),
-                "vwap_21": VWAP(ticker, period=21),
+                "sma_21": SimpleMovingAverage(str(ticker), period=21),
+                "rsi_14": RelativeStrengthIndex(str(ticker), period=14),
+                "rmi_14": RelativeMomentumIndex(str(ticker), period=14, momentum_period=3),
+                "roc_21": RateOfChange(str(ticker), period=21),
+                "atr_14": AverageTrueRange(str(ticker), period=14),
+                "dma_21": DisplacedMovingAverage(str(ticker), period=21, displacement=5),
+                "vwap_21": VWAP(str(ticker), period=21),
             }
 
             for idx, row in group.iterrows():
@@ -449,9 +449,7 @@ class MahalanobisDistanceCalculator:
 
         return inverse_cov
 
-    def calculate_distance(
-        self, observation_1: np.ndarray, observation_2: np.ndarray
-    ) -> float:
+    def calculate_distance(self, observation_1, observation_2) -> float:
         """
         Calculate squared Mahalanobis distance between two observations.
 
@@ -464,6 +462,8 @@ class MahalanobisDistanceCalculator:
         Returns:
             Squared Mahalanobis distance (scalar)
         """
+        observation_1 = np.asarray(observation_1, dtype=float).ravel()
+        observation_2 = np.asarray(observation_2, dtype=float).ravel()
         difference = observation_1 - observation_2  # Shape: (K,)
 
         # Matrix multiplication: (1,K) @ (K,K) @ (K,1) -> scalar
@@ -799,8 +799,8 @@ class GridCell:
         self.feature_names = feature_names
         self.censoring_quantile = censoring_quantile
         self.num_features = len(feature_names)
-        self.prediction = None
-        self.adjusted_fit = None
+        self.prediction: Optional[float] = None
+        self.adjusted_fit: Optional[float] = None
 
     def __repr__(self) -> str:
         return (
@@ -898,7 +898,7 @@ class RBPPredictor:
 
             # Extract feature subset for this cell
             training_subset = training_features[feature_list]
-            task_subset = current_task[feature_list].values
+            task_subset = current_task[feature_list].to_numpy()
 
             # Initialize components for this feature subset
             distance_calc = MahalanobisDistanceCalculator(training_subset)
@@ -1055,7 +1055,7 @@ class RBPPipeline:
 
     def __init__(
         self,
-        fmp_api_key: str,
+        fmp_api_key: Optional[str],
         feature_columns: List[str],
         target_column: str = "target_return_21d",
         max_combination_size: Optional[int] = None,
@@ -1069,6 +1069,9 @@ class RBPPipeline:
             target_column: Name of target variable column
             max_combination_size: Cap on feature subset size. None = all 2^K subsets.
         """
+        if fmp_api_key is None:
+            raise ValueError("FMP_API_KEY must be set in the environment")
+
         self.data_fetcher = MarketDataFetcher(fmp_api_key)
         self.feature_engineer = FeatureEngineer()
         self.feature_columns = feature_columns
@@ -1243,8 +1246,8 @@ def main():
         "vwap_21",
     ]
     target_column = "target_return_21d"
-    #? Use max_combination_size=1 for fast iteration; set to None for full 2^K subsets
-    pipeline = RBPPipeline(fmp_api_key, feature_columns, target_column, max_combination_size=1) #mcs = None if you don't want to limit the size (takes too long)
+    # Use max_combination_size=1 for the fastest iteration (~18min); set to None for full 2^K subsets (takes 2++ days)
+    pipeline = RBPPipeline(fmp_api_key, feature_columns, target_column, max_combination_size=1) # 3 -> ~21 hours
 
     tickers = ["AAPL", "TSLA", "AMD", "MSFT", "NVDA", "^VIX", "TLT", "IEF", "GLD"]
 
