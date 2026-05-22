@@ -133,7 +133,6 @@ def main() -> None:
     config = RBPConfig(tickers=universe, lookback_days=365 * 5)
     service = RBPForecastService(config=config, db=db)
 
-    global running
     try:
         while running:
             if not universe:

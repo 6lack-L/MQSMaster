@@ -30,6 +30,11 @@ import pandas as pd
 import pytest
 import pytz
 
+# tradeExecutor constructs FMPMarketData on init, which validates FMP_API_KEY.
+# Tag the whole module so the unit-test gate (which filters `not api`) skips
+# it on hosts without the key (e.g., main.yml unit step).
+pytestmark = [pytest.mark.integration, pytest.mark.api]
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
