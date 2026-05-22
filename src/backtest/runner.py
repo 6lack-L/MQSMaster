@@ -29,6 +29,7 @@ class BacktestRunner:
         end_date: Optional[Union[str, datetime, pd.Timestamp]] = None,
         initial_capital: float = 100000.0,
         slippage: float = 0.0,
+        cost_model=None,
     ):
         """
         Initializes the BacktestRunner.
@@ -46,6 +47,7 @@ class BacktestRunner:
         # --- END FIX 1 ---
 
         self.slippage = slippage
+        self.cost_model = cost_model
 
         lookback_days = getattr(self.portfolio, "lookback_days", 365)
         self.strategy_lookback_window = pd.Timedelta(days=lookback_days)
@@ -136,6 +138,7 @@ class BacktestRunner:
             initial_capital=self.total_start_capital,
             tickers=self.portfolio.tickers,
             slippage=self.slippage,
+            cost_model=self.cost_model,
         )
         self.portfolio._original_executor = getattr(self.portfolio, "executor", None)
         self.portfolio.executor = self.executor

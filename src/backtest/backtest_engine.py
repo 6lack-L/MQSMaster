@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 import pandas as pd
 
+from src.backtest.cost_model import CostModel
 from src.common.database.MQSDBConnector import MQSDBConnector
 from src.portfolios.portfolio_BASE.strategy import BasePortfolio
 
@@ -45,6 +46,7 @@ class BacktestEngine:
         self.end_date: str = ""
         self.initial_capital: float = 0.0
         self.slippage: float = 0.0
+        self.cost_model: Optional[CostModel] = None
         self.backtest_mode: str = "event"
         self.fast_config: Dict[str, Any] = self._default_fast_config()
 
@@ -110,6 +112,7 @@ class BacktestEngine:
         end_date: str,
         initial_capital: float,
         slippage: float = 0.0,
+        cost_model: Optional[CostModel] = None,
         backtest_mode: str = "event",
         fast_config: Optional[Dict[str, Any]] = None,
         fast_years_back: Optional[int] = None,
@@ -123,6 +126,7 @@ class BacktestEngine:
         self.end_date = end_date
         self.initial_capital = initial_capital
         self.slippage = slippage
+        self.cost_model = cost_model
         self.backtest_mode = str(backtest_mode).lower().strip()
         self.fast_config = self._normalize_fast_config(
             fast_config,
@@ -676,6 +680,7 @@ class BacktestEngine:
                         end_date=self.end_date,
                         initial_capital=self.initial_capital,
                         slippage=self.slippage,
+                        cost_model=self.cost_model,
                     )
                     trade_log = runner.run()
                     trade_logs.append(trade_log)

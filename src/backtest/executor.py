@@ -1,8 +1,10 @@
 import logging
 import math
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import pandas as pd
+
+from src.backtest.cost_model import CostModel
 
 
 class BacktestExecutor:
@@ -17,11 +19,18 @@ class BacktestExecutor:
         tickers: List[str],
         leverage: float = 2.0,
         slippage: float = 0.0,
+        cost_model: Optional[CostModel] = None,
+        adv_lookup: Optional[Dict[str, float]] = None,
+        sigma_lookup: Optional[Dict[str, float]] = None,
     ):
         self.logger = logging.getLogger(self.__class__.__name__)
         self.tickers = tickers
         self.leverage = leverage
         self.slippage = slippage
+        # Legacy constant slippage stays available as a fallback (when cost_model is None).
+        self.cost_model: Optional[CostModel] = cost_model
+        self.adv_lookup: Dict[str, float] = dict(adv_lookup or {})
+        self.sigma_lookup: Dict[str, float] = dict(sigma_lookup or {})
 
         # --- Unified Portfolio State ---
         self.cash = initial_capital
@@ -31,15 +40,34 @@ class BacktestExecutor:
 
         self.logger.info(
             f"BacktestExecutor initialized with {initial_capital:.2f} capital, "
-            f"leverage={leverage}, slippage={slippage}, for tickers: {tickers}"
+            f"leverage={leverage}, slippage={slippage}, "
+            f"cost_model={'on' if self.cost_model is not None else 'off'}, "
+            f"for tickers: {tickers}"
         )
 
-    def _apply_slippage(self, price: float, signal_type: str) -> float:
+    def _apply_slippage(
+        self,
+        price: float,
+        signal_type: str,
+        ticker: Optional[str] = None,
+        trade_notional: float = 0.0,
+    ) -> float:
         """
-        Applies slippage to the execution price based on the trade direction.
-        - For BUY orders, the price is increased.
-        - For SELL orders, the price is decreased.
+        Applies execution cost to the price.
+        If a CostModel is configured, uses it (fixed + spread + sqrt impact).
+        Otherwise falls back to the legacy constant-multiplier slippage.
         """
+        if self.cost_model is not None and ticker is not None:
+            adv = float(self.adv_lookup.get(ticker, 0.0))
+            sigma = float(self.sigma_lookup.get(ticker, 0.0))
+            return self.cost_model.apply_to_price(
+                mid_price=price,
+                side=signal_type,
+                trade_notional=abs(trade_notional),
+                adv_notional=adv,
+                sigma_daily=sigma,
+                ticker=ticker,
+            )
         if signal_type == "BUY":
             return price * (1 + self.slippage)
         elif signal_type == "SELL":
@@ -122,7 +150,11 @@ class BacktestExecutor:
         if signal_type == "HOLD" or confidence == 0.0:
             return
 
-        exec_price = self._apply_slippage(arrival_price, signal_type)
+        # First-pass approximation of trade notional so the cost model can size impact.
+        approx_notional = abs(port_notional * ticker_weight * confidence)
+        exec_price = self._apply_slippage(
+            arrival_price, signal_type, ticker=ticker, trade_notional=approx_notional,
+        )
         if exec_price <= 0:
             self.logger.warning(
                 f"Cannot execute trade for {ticker}: Invalid execution price of {exec_price} after slippage."

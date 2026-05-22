@@ -31,6 +31,10 @@ class MQSDBConnector:
         self.sslmode = os.getenv("sslmode", "require")
 
         # Initialize the connection pool.
+        # TCP keepalives let the server detect a dead client within ~90s
+        # instead of waiting for OS defaults (~2h on macOS), so orphaned
+        # connections from killed Python processes do not hold locks
+        # on the server side for long.
         try:
             self.pool = psycopg2.pool.ThreadedConnectionPool(
                 minconn=1,
@@ -41,6 +45,11 @@ class MQSDBConnector:
                 user=self.db_user,
                 password=self.db_password,
                 sslmode=self.sslmode,
+                connect_timeout=15,
+                keepalives=1,
+                keepalives_idle=30,
+                keepalives_interval=10,
+                keepalives_count=3,
             )
             logging.info("Database connection pool created successfully.")
         except Exception as e:
@@ -51,27 +60,95 @@ class MQSDBConnector:
         self.last_connection_time = time.time()
 
     def get_connection(self):
-        """Retrieve a connection from the pool and verify it is active."""
+        """Retrieve a connection from the pool and verify it is active.
+
+        If the pooled connection is in an aborted-transaction state (e.g. a
+        prior worker left it poisoned), we attempt a rollback first so the
+        health-check SELECT 1 can succeed. If recovery fails we close the
+        connection and tell the pool to drop it, then ask the pool for a
+        fresh one. This prevents leaked connections that would otherwise
+        exhaust the pool and deadlock all workers.
+        """
+        conn = None
         try:
             conn = self.pool.getconn()
             if conn.closed:
-                logging.warning("Acquired a closed connection, retrying...")
-                # self.pool.putconn(conn) # Return the closed conn before getting a new one
-                conn = self.pool.getconn()  # Get a new one
-            with conn.cursor() as cursor:
-                cursor.execute("SELECT 1")
+                logging.warning("Acquired a closed connection, requesting fresh one.")
+                try:
+                    self.pool.putconn(conn, close=True)
+                except Exception:
+                    pass
+                conn = self.pool.getconn()
+
+            # Best-effort: clear any aborted-txn state inherited from prior worker.
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+
+            try:
+                with conn.cursor() as cursor:
+                    cursor.execute("SELECT 1")
+            except Exception as hc_ex:
+                logging.warning(
+                    "Health-check failed (%s); discarding and retrying once.",
+                    hc_ex,
+                )
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+                try:
+                    self.pool.putconn(conn, close=True)
+                except Exception:
+                    pass
+                conn = self.pool.getconn()
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                with conn.cursor() as cursor:
+                    cursor.execute("SELECT 1")
             return conn
         except Exception as e:
             logging.error("Error getting connection from pool: %s", e)
+            # Avoid leaking a checked-out connection on the error path.
+            if conn is not None:
+                try:
+                    self.pool.putconn(conn, close=True)
+                except Exception:
+                    pass
             return None
 
     def release_connection(self, conn):
-        """Return the connection to the pool safely."""
-        if conn:
+        """Return the connection to the pool safely.
+
+        If the connection is closed or in a broken state, ask the pool to
+        drop it instead of recycling so workers don't inherit poison.
+        """
+        if not conn:
+            return
+        try:
+            if conn.closed:
+                self.pool.putconn(conn, close=True)
+                return
+            # Belt-and-suspenders: clear any leftover txn state before recycling.
             try:
-                self.pool.putconn(conn)
-            except Exception as e:
-                logging.error("Error releasing connection: %s", e)
+                conn.rollback()
+            except Exception:
+                # Connection is unusable; drop it.
+                try:
+                    self.pool.putconn(conn, close=True)
+                except Exception:
+                    pass
+                return
+            self.pool.putconn(conn)
+        except Exception as e:
+            logging.error("Error releasing connection: %s", e)
+            try:
+                self.pool.putconn(conn, close=True)
+            except Exception:
+                pass
 
     def close_all_connections(self):
         """Closes all connections in the pool."""

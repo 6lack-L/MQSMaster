@@ -20,12 +20,16 @@ import pandas as pd
 from tqdm import tqdm
 
 from src.backtest.backtest_engine import BacktestEngine
+from src.backtest.cost_model import CostModel
 from src.common.database.MQSDBConnector import MQSDBConnector
 from src.portfolios.portfolio_1.strategy import VolMomentum
 from src.portfolios.portfolio_2.strategy import MomentumStrategy
 from src.portfolios.portfolio_3.strategy import RegimeAdaptiveStrategy
 from src.portfolios.portfolio_4.strategy import TrendRotateStrategy
 from src.portfolios.portfolio_5.strategy import RBPStrategy
+from src.portfolios.portfolio_6.strategy import Portfolio6Strategy
+from src.portfolios.portfolio_7.strategy import Portfolio7Strategy
+from src.portfolios.portfolio_8.strategy import Portfolio8Strategy
 from src.portfolios.portfolio_BASE.strategy import BasePortfolio
 from src.portfolios.portfolio_dummy.strategy import CrossoverRmiStrategy
 
@@ -43,28 +47,25 @@ Backtest configuration parameters:
 - AVAILABLE_PORTFOLIO_CLASSES: A list of all available portfolio strategy classes that can be used in the backtest.
 - BACKTEST_NUM_BATCHES: An optional integer specifying the number of batches to use for parallel backtest execution. If set to None, the batch count will be automatically determined based on the number of CPU cores and the number of portfolios.
 """
-START_DATE = "2025-01-01"
-END_DATE = "2025-06-05"
+START_DATE = "2021-01-01"
+END_DATE = "2026-05-15"
 INITIAL_CAPITAL = 1000000.0
-SLIPPAGE = 0.000001  # 0.1 basis point
-BACKTEST_MODE = ""  # or "fast"
+SLIPPAGE = 0.0  # cost_model authoritative; legacy slippage held at 0
+COST_MODEL = CostModel.for_large_cap()  # fixed 0.5 + half-spread 2 + 1.0*sigma*sqrt(Q/ADV) bps
+# Survivorship-bias caveat (D2 audit, 2026-05-20): the P6/P7/P8 universes are
+# current-snapshot SPX+NDX (no historical index membership). Multi-year backtests
+# therefore overstate CAGR by ~50-400 bps/yr per BGIR 1992 / AnalyticalPlatform 145bps.
+# Tier 2 PIT pipeline is a follow-up PR. Treat any pre-2024 reported metric with
+# this caveat. See .claude/agents-output/teamD/D2_pit_data_audit.md.
+BACKTEST_MODE = "event"  # or "fast"
 BACKTEST_NUM_BATCHES = None  # Set to an integer to override auto batch(for best results use the number of cores on your machine).
 DEFAULT_PORTFOLIO_CLASSES = [
-    VolMomentum,
-    MomentumStrategy,
-    RegimeAdaptiveStrategy,
-    TrendRotateStrategy,
-    CrossoverRmiStrategy,
-    RBPStrategy,
+    Portfolio6Strategy,
 ]
 
 AVAILABLE_PORTFOLIO_CLASSES = [
-    VolMomentum,
-    MomentumStrategy,
-    RegimeAdaptiveStrategy,
-    TrendRotateStrategy,
-    CrossoverRmiStrategy,
-    RBPStrategy,
+    
+    Portfolio6Strategy
 ]
 
 # Adapters for external vectorized backtest approximations of the above strategies.
@@ -136,7 +137,7 @@ def _resolve_fast_mode_config(
     return resolved
 
 
-def _init_backtest(
+def init_backtest(
     portfolio_classes=DEFAULT_PORTFOLIO_CLASSES,
     start_date=START_DATE,
     end_date=END_DATE,
@@ -214,7 +215,8 @@ def run_backtest(
             start_date=start_date,
             end_date=end_date,
             initial_capital=initial_capital,
-            slippage=slippage,  # 0.1 basis point
+            slippage=slippage,
+            cost_model=COST_MODEL,
             backtest_mode=backtest_mode,
             fast_config=resolved_fast_config,
         )
@@ -307,7 +309,7 @@ def main(num_batches: Optional[int] = None):
             slippage,
             backtest_mode,
             resolved_fast_config,
-        ) = _init_backtest()
+        ) = init_backtest()
 
         resolved_num_batches = _resolve_num_batches(
             len(portfolio_classes),
@@ -357,7 +359,7 @@ def main(num_batches: Optional[int] = None):
                     elif trade_log is None:
                         raise ValueError("Backtest returned None instead of a trade log.")
                     for portfolio in range(len(trade_log)):
-                        if len(trade_log[portfolio]) == 0:
+                        if trade_log[portfolio] is None or len(trade_log[portfolio]) == 0:
                             logging.info("No trades executed for portfolio")
                             continue
                         for trade in trade_log[portfolio]:

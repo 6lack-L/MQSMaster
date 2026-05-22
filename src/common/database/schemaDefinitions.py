@@ -156,6 +156,25 @@ class SchemaDefinitions:
         );
         """
 
+        create_rbp_forecasts_table = """
+        CREATE TABLE IF NOT EXISTS rbp_forecasts (
+            id            BIGSERIAL PRIMARY KEY,
+            ticker        VARCHAR(10) NOT NULL,
+            asof          TIMESTAMP WITH TIME ZONE NOT NULL,
+            horizon_days  INT NOT NULL DEFAULT 21,
+            y_pred        NUMERIC NOT NULL,
+            rbi_top       JSONB,
+            model_version VARCHAR(50) NOT NULL,
+            generated_at  TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            UNIQUE (ticker, asof, horizon_days, model_version)
+        );
+        """
+
+        create_rbp_forecasts_index = """
+        CREATE INDEX IF NOT EXISTS idx_rbp_forecasts_ticker_asof
+            ON rbp_forecasts (ticker, asof DESC);
+        """
+
         statements = [
             create_user_creds_table,
             create_market_data_table,
@@ -166,6 +185,8 @@ class SchemaDefinitions:
             create_positions_table,
             create_port_weights_table,
             create_news_sentiment_table,
+            create_rbp_forecasts_table,
+            create_rbp_forecasts_index,
         ]
 
         for stmt in statements:
