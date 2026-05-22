@@ -95,7 +95,7 @@ src/
 │   └── engine.py                     # MODIFIED — starts/stops OMS scheduler thread
 │
 ├── portfolios/
-│   └── strategy_api.py              # MODIFIED — StrategyContext routes through OMS
+│   └── order_interface.py              # MODIFIED — StrategyContext routes through OMS
 │
 └── common/
     └── database/
@@ -337,7 +337,7 @@ Writes order lifecycle events to two new database tables (see Section 6). Provid
 
 ### 5.8 Modifications to Existing Files
 
-#### `strategy_api.py` — StrategyContext._trade()
+#### `order_interface.py` — StrategyContext._trade()
 
 Current:
 ```python
@@ -532,5 +532,5 @@ The `OrderManager` can auto-select based on a simple heuristic:
 7. `src/oms/order_manager.py` — Coordinator (ties everything together)
 8. Modify `src/live_trading/executor.py` — Add `execute_child_order()`
 9. Modify `src/live_trading/engine.py` — Wire up OMS lifecycle
-10. Modify `src/portfolios/strategy_api.py` — Route through OMS
+10. Modify `src/portfolios/order_interface.py` — Route through OMS
 11. Update `src/common/database/schemaDefinitions.py` — New tables

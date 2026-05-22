@@ -3,15 +3,15 @@ import logging
 # Try relative imports first; on failure, log and attempt absolute imports.
 try:
     from portfolios.portfolio_BASE.strategy import BasePortfolio
-    from portfolios.strategy_api import StrategyContext
+    from portfolios.order_interface import StrategyContext
 except ImportError as rel_err:
     logging.warning(
-        "Base Portfolio and strategy_api relative import failed; using absolute import. Details: %s",
+        "Base Portfolio and order_interface relative import failed; using absolute import. Details: %s",
         rel_err,
     )
     try:
         from src.portfolios.portfolio_BASE.strategy import BasePortfolio
-        from src.portfolios.strategy_api import StrategyContext
+        from src.portfolios.order_interface import StrategyContext
     except ImportError as abs_err:
         logging.error(
             "Failed to import BasePortfolio and StrategyContext from both relative and absolute paths. Details: %s",

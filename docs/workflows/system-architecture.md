@@ -159,7 +159,7 @@ flowchart TB
 | `vector_strategy_adapters` | `src/backtest/vector_strategy_adapters.py` | Fast-mode signal shadows for each event-mode strategy |
 | `BacktestExecutor` | `src/backtest/executor.py` | Simulated trade execution with margin / slippage |
 | `BasePortfolio` | `src/portfolios/portfolio_BASE/strategy.py` | Abstract base; indicator factory; data-feed contract |
-| `StrategyContext` | `src/portfolios/strategy_api.py` | `Market` / `Portfolio` / `buy` / `sell` surface for strategies |
+| `StrategyContext` | `src/portfolios/order_interface.py` | `Market` / `Portfolio` / `buy` / `sell` surface for strategies |
 | Indicators | `src/portfolios/indicators/*.py` | SMA, EMA, RSI, RMI, ATR, DMA, ROC, VWAP |
 | `RBPModel` | `src/portfolios/portfolio_5/rbp_model.py` | Relevance-Based Prediction model used by Portfolio 5 |
 | `DailyAllocator` | `src/risk_manager/daily_allocator.py` | Daily fund transfers between master and strategy portfolios |

@@ -1,4 +1,4 @@
-# tests/test_strategy_api.py
+# tests/test_order_interface.py
 
 import logging
 from unittest.mock import Mock
@@ -7,8 +7,8 @@ import pandas as pd
 import pytest
 
 from src.portfolios.market_data_api import AssetData, MarketData
-from src.portfolios.strategy_api import PortfolioManager, StrategyContext
-
+from src.portfolios.order_interface import StrategyContext
+from src.portfolios.portfolio_interface import PortfolioManager
 
 class TestAssetData:
     """Test suite for AssetData class"""
