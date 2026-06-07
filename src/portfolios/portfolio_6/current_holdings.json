@@ -1,218 +1,30 @@
 {
-  "as_of": "2026-05-14T19:59:00+00:00",
-  "portfolio_id": "6",
+  "as_of": "2024-12-16T10:00:00-05:00",
+  "portfolio_id": "6-parity-test",
   "weighting_method": "INV_VOL",
   "score_method": "rank_sum",
-  "n_positions": 52,
-  "total_weight": 1.0,
+  "n_positions": 5,
+  "total_weight": 1.5000000000000002,
   "holdings": [
     {
-      "ticker": "DBMF",
-      "weight": 0.08547
-    },
-    {
-      "ticker": "GLD",
-      "weight": 0.059829
-    },
-    {
-      "ticker": "FE",
-      "weight": 0.025066
-    },
-    {
-      "ticker": "CMS",
-      "weight": 0.024345
-    },
-    {
-      "ticker": "JNJ",
-      "weight": 0.023402
-    },
-    {
-      "ticker": "KO",
-      "weight": 0.023055
-    },
-    {
-      "ticker": "DTE",
-      "weight": 0.022228
-    },
-    {
-      "ticker": "MCD",
-      "weight": 0.021904
-    },
-    {
-      "ticker": "TJX",
-      "weight": 0.020881
-    },
-    {
-      "ticker": "RSG",
-      "weight": 0.020484
-    },
-    {
-      "ticker": "COST",
-      "weight": 0.02013
-    },
-    {
-      "ticker": "PG",
-      "weight": 0.019418
-    },
-    {
-      "ticker": "PEG",
-      "weight": 0.019075
-    },
-    {
-      "ticker": "CTAS",
-      "weight": 0.018953
-    },
-    {
-      "ticker": "CINF",
-      "weight": 0.018719
-    },
-    {
-      "ticker": "SNA",
-      "weight": 0.018129
-    },
-    {
-      "ticker": "CL",
-      "weight": 0.017717
-    },
-    {
-      "ticker": "VLTO",
-      "weight": 0.017514
-    },
-    {
-      "ticker": "MA",
-      "weight": 0.017396
-    },
-    {
-      "ticker": "OTIS",
-      "weight": 0.017387
-    },
-    {
-      "ticker": "NDSN",
-      "weight": 0.017274
-    },
-    {
-      "ticker": "CHD",
-      "weight": 0.017156
-    },
-    {
-      "ticker": "PEP",
-      "weight": 0.016935
-    },
-    {
-      "ticker": "MDT",
-      "weight": 0.016808
-    },
-    {
-      "ticker": "ITW",
-      "weight": 0.016581
-    },
-    {
-      "ticker": "ABT",
-      "weight": 0.01658
-    },
-    {
-      "ticker": "WMT",
-      "weight": 0.016439
-    },
-    {
-      "ticker": "CPRT",
-      "weight": 0.016335
-    },
-    {
-      "ticker": "ECL",
-      "weight": 0.016287
-    },
-    {
-      "ticker": "GWW",
-      "weight": 0.016279
-    },
-    {
-      "ticker": "YUM",
-      "weight": 0.016103
-    },
-    {
-      "ticker": "HLT",
-      "weight": 0.015983
-    },
-    {
-      "ticker": "RMD",
-      "weight": 0.015863
-    },
-    {
-      "ticker": "SYK",
-      "weight": 0.015852
-    },
-    {
-      "ticker": "BR",
-      "weight": 0.01575
-    },
-    {
-      "ticker": "PAYX",
-      "weight": 0.015278
+      "ticker": "MSFT",
+      "weight": 0.45795
     },
     {
       "ticker": "AAPL",
-      "weight": 0.015265
+      "weight": 0.413653
     },
     {
-      "ticker": "KMB",
-      "weight": 0.015026
+      "ticker": "PG",
+      "weight": 0.339619
     },
     {
-      "ticker": "ALLE",
-      "weight": 0.015011
+      "ticker": "KO",
+      "weight": 0.221899
     },
     {
-      "ticker": "HD",
-      "weight": 0.015001
-    },
-    {
-      "ticker": "MO",
-      "weight": 0.014998
-    },
-    {
-      "ticker": "CASY",
-      "weight": 0.014865
-    },
-    {
-      "ticker": "NWSA",
-      "weight": 0.014507
-    },
-    {
-      "ticker": "JKHY",
-      "weight": 0.014209
-    },
-    {
-      "ticker": "AOS",
-      "weight": 0.014111
-    },
-    {
-      "ticker": "DPZ",
-      "weight": 0.013974
-    },
-    {
-      "ticker": "LOW",
-      "weight": 0.013951
-    },
-    {
-      "ticker": "VRSN",
-      "weight": 0.013903
-    },
-    {
-      "ticker": "AZO",
-      "weight": 0.013855
-    },
-    {
-      "ticker": "FAST",
-      "weight": 0.013412
-    },
-    {
-      "ticker": "NVR",
-      "weight": 0.013243
-    },
-    {
-      "ticker": "TSCO",
-      "weight": 0.012064
+      "ticker": "GLD",
+      "weight": 0.066879
     }
   ]
 }

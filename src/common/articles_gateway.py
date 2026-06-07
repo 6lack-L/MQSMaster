@@ -11,6 +11,7 @@ for AV lives in the scraper itself.
 from __future__ import annotations
 
 import os
+from typing import Any
 
 import requests
 
@@ -25,11 +26,14 @@ class ArticlesGateway:
 
     def __init__(self):
         api = APIAuth()
-        self.fmp_key = api.get_fmp_api_key()
-        self.alpha_key = os.getenv("ALPHA_KEY")
-        self._fmp_limiter = FMPRateLimiter.for_nlp()
+        self.fmp_key: str = api.get_fmp_api_key()
+        self.alpha_key: str | None = os.getenv("ALPHA_KEY")
+        self._fmp_limiter: FMPRateLimiter = FMPRateLimiter.for_nlp()
 
-    def fetch_fmp_news(self, ticker, page=0):
+    def fetch_fmp_news(self,
+        ticker: str,
+        page: int = 0
+    ) -> Any:
         """Single-ticker FMP news page.
 
         FMP's multi-ticker support returns the top-N newest articles
@@ -45,7 +49,11 @@ class ArticlesGateway:
         resp.raise_for_status()
         return resp.json()
 
-    def fetch_alpha_news(self, ticker_list, time_from, time_to):
+    def fetch_alpha_news(self,
+        ticker_list: list[str],
+        time_from,
+        time_to
+    ) -> Any:
         """Alpha Vantage NEWS_SENTIMENT batch endpoint."""
         tickers = ",".join(ticker_list)
         url = (

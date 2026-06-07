@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Mapping, Optional
+from collections.abc import Mapping
 
 
 @dataclass(frozen=True)
@@ -54,13 +54,13 @@ class CostModel:
 
     def __init__(
         self,
-        params: Optional[CostModelParams] = None,
-        spread_overrides: Optional[Mapping[str, float]] = None,
+        params: CostModelParams | None = None,
+        spread_overrides: Mapping[str, float] | None = None,
     ):
-        self.params = params or CostModelParams()
+        self.params: CostModelParams = params or CostModelParams()
         self.spread_overrides: Mapping[str, float] = dict(spread_overrides or {})
 
-    def _spread_component_bps(self, ticker: Optional[str]) -> float:
+    def _spread_component_bps(self, ticker: str | None) -> float:
         if not self.params.enable_spread:
             return 0.0
         if ticker is not None and ticker in self.spread_overrides:
@@ -93,7 +93,7 @@ class CostModel:
         trade_notional: float,
         adv_notional: float,
         sigma_daily: float,
-        ticker: Optional[str] = None,
+        ticker: str | None = None,
     ) -> float:
         return (
             self._fixed_component_bps()
@@ -106,7 +106,7 @@ class CostModel:
         trade_notional: float,
         adv_notional: float,
         sigma_daily: float,
-        ticker: Optional[str] = None,
+        ticker: str | None = None,
     ) -> float:
         return self.cost_bps(trade_notional, adv_notional, sigma_daily, ticker) * 1e-4
 
@@ -117,7 +117,7 @@ class CostModel:
         trade_notional: float,
         adv_notional: float,
         sigma_daily: float,
-        ticker: Optional[str] = None,
+        ticker: str | None = None,
     ) -> float:
         if mid_price <= 0:
             return mid_price
