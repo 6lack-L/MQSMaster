@@ -36,7 +36,7 @@ class ParentOrder:
     order_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     portfolio_id: str = ""
     ticker: str = ""
-    side: Side = Side.BUY
+    signal_type: Side = Side.BUY
     total_quantity: float = 0.0
     filled_quantity: float = 0.0
     algo_type: AlgoType = AlgoType.MARKET
@@ -70,7 +70,7 @@ class ChildOrder:
     child_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     parent_order_id: str = ""
     ticker: str = ""
-    side: Side = Side.BUY
+    signal_type: Side = Side.BUY
     target_quantity: float = 0.0
     filled_quantity: float = 0.0
     scheduled_time: Optional[datetime] = None

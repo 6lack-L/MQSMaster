@@ -10,12 +10,12 @@ try:
     from portfolios import toolkit  
     from portfolios.market_data_api import MarketData
     from portfolios.portfolio_interface import PortfolioManager
-    from src.oms.order_structs import OrderType
 except ImportError:
     logging.warning("toolkit relative import failed; using absolute import.")
     try:
         from src.portfolios import toolkit
         from src.portfolios.market_data_api import MarketData
+        from src.portfolios.portfolio_interface import PortfolioManager
     except ImportError:
         logging.error("Failed to import toolkit from both relative and absolute paths.")
         raise
@@ -36,12 +36,12 @@ class StrategyContext:
         current_time,
         executor,
         portfolio_config,
-        order_manager,
+        order_manager=None,
     ):
         self._executor = executor
+        self._order_manager = order_manager
         self._portfolio_config = portfolio_config
         self._positions_df = positions_df
-        self._order_manager = order_manager
         effective_time = current_time
         timezone = pytz.timezone("America/New_York")
         if effective_time is None:
@@ -77,13 +77,13 @@ class StrategyContext:
             cash=cash_val, total_value=port_val, positions_df=positions_df
         )
 
-    def buy(self, ticker: str, confidence: float = 1.0, order_type=OrderType.Market):
-        self._trade(ticker, "BUY", confidence, order_type)
+    def buy(self, ticker: str, confidence: float = 1.0):
+        self._trade(ticker, "BUY", confidence)
 
-    def sell(self, ticker: str, confidence: float = 1.0, order_type=OrderType.Market):
-        self._trade(ticker, "SELL", confidence, order_type)
+    def sell(self, ticker: str, confidence: float = 1.0):
+        self._trade(ticker, "SELL", confidence)
 
-    def _trade(self, ticker: str, signal_type: str, confidence: float, order_type: OrderType = OrderType.Market):
+    def _trade(self, ticker: str, signal_type: str, confidence: float):
         asset_data = self.Market[ticker]
         if not asset_data.Exists or asset_data.Close is None or asset_data.Close <= 0:
             logging.warning(
@@ -94,23 +94,7 @@ class StrategyContext:
                 asset_data.Close,
             )
             return
-        
-        elif self._order_manager is not None:
-            self._order_manager.process_order(
-                portfolio_id=self._portfolio_config['id'],
-                ticker=ticker,
-                side=signal_type,
-                confidence=confidence,
-                arrival_price=asset_data.Close,
-                cash=self.Portfolio.cash,
-                positions=self._positions_df,
-                port_notional=self.Portfolio.total_value,
-                ticker_weight=self.Portfolio.get_asset_weight(ticker, asset_data.Close),
-                timestamp=self.time,
-            )
-        else:
-            # Fallback: direct execution (backward compatible, used in backtest)
-            self._executor.execute_trade(
+        self._executor.execute_trade(
                 portfolio_id=self._portfolio_config["id"],
                 ticker=ticker,
                 signal_type=signal_type,
@@ -121,4 +105,5 @@ class StrategyContext:
                 port_notional=self.Portfolio.total_value,
                 ticker_weight=self.Portfolio.get_asset_weight(ticker, asset_data.Close),
                 timestamp=self.time,
+                order_manager=self._order_manager,
             )

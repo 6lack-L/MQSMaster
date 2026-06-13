@@ -29,6 +29,7 @@ class BacktestRunner:
         end_date: Optional[Union[str, datetime, pd.Timestamp]] = None,
         initial_capital: float = 100000.0,
         slippage: float = 0.0,
+        order_manager=None,
     ):
         """
         Initializes the BacktestRunner.
@@ -36,6 +37,7 @@ class BacktestRunner:
         self.portfolio = portfolio
         self.logger = portfolio.logger
         self.total_start_capital = initial_capital
+        self.order_manager = order_manager
 
         # FIX 3: Use new timezone-aware method
         self.start_date = self._ensure_datetime(start_date)
@@ -137,6 +139,8 @@ class BacktestRunner:
             tickers=self.portfolio.tickers,
             slippage=self.slippage,
         )
+        # Attach the OMS to its consumer; None keeps the proven direct path.
+        self.executor._order_manager = self.order_manager
         self.portfolio._original_executor = getattr(self.portfolio, "executor", None)
         self.portfolio.executor = self.executor
 

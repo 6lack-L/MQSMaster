@@ -60,10 +60,39 @@ class RunEngine:
                 with open(config_path, "r") as f:
                     config_data = json.load(f)
 
+                # Gate the OMS behind config: when disabled (or init fails) the
+                # order manager stays None and the proven direct-execution path
+                # is used. Scoped per-portfolio so one portfolio's OMS never
+                # leaks onto another.
+                order_manager = None
+                # Use the canonical PORTFOLIO_ID key (matches BasePortfolio and
+                # the backtest engine); configs do not carry an "id" key.
+                portfolio_id = config_data.get("PORTFOLIO_ID", "0")
+                load_oms = config_data.get("OMS", {}).get("enabled", False)
+                if load_oms:
+                    self.logger.debug(
+                        f"Initializing OrderManager for portfolio {portfolio_id} with OMS enabled."
+                    )
+                    try:
+                        from src.oms.order_manager import OrderManager
+                        order_manager = OrderManager(
+                            portfolio_id=portfolio_id,
+                            config=config_data.get("OMS", {})
+                        )
+                        self.logger.info(
+                            f"OrderManager initialized for portfolio {portfolio_id} with OMS config."
+                        )
+                    except Exception as e:
+                        self.logger.error(
+                            f"Failed to initialize OrderManager for portfolio {portfolio_id}: {e}"
+                        )
+                        continue
+
                 # --- UPDATED: Instantiate with the loaded config_dict ---
                 portfolio_instance = portfolio_cls(
                     db_connector=self.db_connector,
                     executor=self.executor,
+                    order_manager=order_manager,
                     debug=self.debug,
                     config_dict=config_data,
                 )

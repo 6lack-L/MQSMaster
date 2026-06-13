@@ -459,6 +459,43 @@ class TestStrategyContext:
         assert call_args["signal_type"] == "BUY"
         assert call_args["confidence"] == 0.8
         assert call_args["portfolio_id"] == "1"
+        # When no OMS is supplied, the context forwards order_manager=None so the
+        # executor uses its proven direct path.
+        assert call_args["order_manager"] is None
+
+    def test_order_manager_threaded_to_executor(
+        self,
+        market_data,
+        cash_data,
+        positions_data,
+        port_notional_data,
+        mock_executor,
+        portfolio_config,
+    ):
+        """A supplied OrderManager is threaded through to execute_trade as a
+        call parameter (the live-pipeline wiring, thread-safe with a shared
+        executor)."""
+        from src.oms.order_manager import OrderManager
+
+        order_manager = OrderManager(portfolio_id="1", config={})
+        current_time = pd.Timestamp("2024-01-02", tz="America/New_York")
+
+        context = StrategyContext(
+            market_data_df=market_data,
+            cash_df=cash_data,
+            positions_df=positions_data,
+            port_notional_df=port_notional_data,
+            current_time=current_time,
+            executor=mock_executor,
+            portfolio_config=portfolio_config,
+            order_manager=order_manager,
+        )
+
+        context.buy("AAPL", confidence=0.8)
+
+        mock_executor.execute_trade.assert_called_once()
+        call_args = mock_executor.execute_trade.call_args[1]
+        assert call_args["order_manager"] is order_manager
 
     def test_sell_method(
         self,

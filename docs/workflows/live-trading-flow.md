@@ -104,3 +104,9 @@ flowchart TD
 - Supports long and short positions
 - Configurable leverage (default: 2.0x)
 - Buying power calculation mirrors live trading constraints
+
+### Order Management (OMS)
+- During portfolio loading, when a portfolio's `config.json` sets `OMS.enabled`, the engine builds a **per-portfolio** `OrderManager`; otherwise it stays `None` and the proven direct-execution path runs unchanged.
+- Because all portfolio threads share a single `tradeExecutor`, the per-portfolio `OrderManager` is **threaded through as a call parameter** (`StrategyContext(order_manager=...)` → `execute_trade(order_manager=...)`), not stored on the shared executor — a mutable executor attribute would race across threads.
+- Inside "Execute trade", after sizing and before the database write, the executor registers a parent order with the `OrderManager`. **This is a tracking layer only — it does not change the fill;** the trade still flows through "Update database" exactly as the diagram shows.
+- VWAP/TWAP slicing, the scheduler thread, and order persistence are not yet built. See [OMS implementation status](../OMS/OMS_DESIGN.md#1a-implementation-status-as-of-2026-06-13).

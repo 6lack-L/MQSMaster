@@ -69,6 +69,7 @@ class tradeExecutor:
 
         buying_power = (portfolio_equity * self.leverage) - gross_position_value
         return max(0, buying_power)
+    
 
     def execute_trade(
         self,
@@ -82,6 +83,7 @@ class tradeExecutor:
         port_notional,
         ticker_weight,
         timestamp,
+        order_manager=None,
     ):
         """
         Calculates and executes a trade using a margin model that
@@ -174,6 +176,35 @@ class tradeExecutor:
                 ticker,
             )
             return
+
+        # --- Enter the order into the OMS if available; it may adjust the
+        # quantity before the fill is applied. On any OMS failure we fall back
+        # to the executor's already-sized quantity (proven direct path). ---
+        if order_manager is not None:
+            try:
+                self.logger.debug(
+                    f"Submitting order to OrderManager for {ticker}: "
+                    f"final_notional={final_trade_notional:.2f}, "
+                    f"quantity_to_trade={quantity_to_trade}"
+                )
+                parent_order = order_manager.process_order(
+                    portfolio_id=portfolio_id,
+                    ticker=ticker,
+                    side=signal_type,
+                    confidence=confidence_val,
+                    arrival_price=arrival_price_val,
+                    total_quantity=quantity_to_trade,
+                    timestamp=timestamp,
+                )
+                quantity_to_trade = parent_order.total_quantity
+                self.logger.info(
+                    f"OrderManager registered order {parent_order.order_id} for {ticker}: "
+                    f"quantity={quantity_to_trade}, exec_price={exec_price:.2f}"
+                )
+            except Exception as e:
+                self.logger.error(
+                    f"OrderManager.process_order failed for {ticker}: {e}"
+                )
 
         # --- 4. Execute and Update Database ---
         updated_cash = cash_val

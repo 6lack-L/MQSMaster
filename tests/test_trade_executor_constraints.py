@@ -164,3 +164,37 @@ def test_trade_execution_happy_path(
     assert record[0]["updated_cash"] == pytest.approx(expected_updated_cash)
     assert record[0]["updated_quantity"] == pytest.approx(expected_updated_quantity)
     assert record
+
+
+def test_order_manager_registers_order_before_db_write():
+    """When an OMS is supplied, execute_trade registers the sized order with it
+    (tracking layer) before the DB write, and the returned quantity flows on to
+    settlement."""
+    from src.oms.order_manager import OrderManager
+
+    record = []
+    executor = _build_executor({"AAPL": 10.0}, record)
+    order_manager = OrderManager(portfolio_id="p1", config={})
+
+    result = executor.execute_trade(
+        portfolio_id="p1",
+        ticker="AAPL",
+        signal_type="BUY",
+        confidence=1.0,
+        arrival_price=10.0,
+        cash=1000.0,
+        positions=_empty_positions(),
+        port_notional=1000.0,
+        ticker_weight=0.5,
+        timestamp=datetime(2025, 1, 1, tzinfo=timezone.utc),
+        order_manager=order_manager,
+    )
+
+    assert result is not None
+    # The OMS registered exactly one parent order for the sized quantity (50),
+    # and that quantity was written through to the DB layer.
+    assert len(order_manager.orders_by_id) == 1
+    parent = next(iter(order_manager.orders_by_id.values()))
+    assert parent.ticker == "AAPL"
+    assert parent.total_quantity == pytest.approx(50.0)
+    assert record[0]["quantity"] == 50

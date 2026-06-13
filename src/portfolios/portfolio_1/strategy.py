@@ -78,7 +78,7 @@ class VolMomentum(BasePortfolio):
                 asset_weight = portfolio.get_asset_weight(ticker, asset.Close)
             if asset_weight <= weight:
                 target_weight = True
-            else:
+            elif asset_weight > weight:
                 target_weight = False
 
             if (bullish and target_weight) or position < 0:  # Max 25% weight

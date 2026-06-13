@@ -12,7 +12,6 @@ import pandas as pd
 try:
     from src.portfolios.indicators.base import Indicator
     from src.portfolios.order_interface import StrategyContext
-    from src.oms.order_manager import OrderManager
 except ImportError as abs_err:
     logging.warning(
         "Absolute import for Indicator/StrategyContext failed; trying relative. Details: %s",
@@ -21,7 +20,6 @@ except ImportError as abs_err:
     try:
         from portfolios.indicators.base import Indicator
         from portfolios.order_interface import StrategyContext
-        from src.oms.order_manager import OrderManager
     except ImportError as rel_err:
         logging.error(
             "Both absolute and relative imports failed for Indicator/StrategyContext.\n"
@@ -51,13 +49,14 @@ class BasePortfolio(ABC):
         debug=False,
         config_dict=None,
         backtest_start_date: Optional[datetime] = None,
+        order_manager=None,
     ):
         """
         Initializes the base portfolio, loading configuration.
         """
         self.db = db_connector
         self.executor = executor
-        self._order_manager = OrderManager()
+        self.order_manager = order_manager
         self.running = True
         self.debug = debug
         self.backtest_start_date = backtest_start_date
@@ -164,8 +163,8 @@ class BasePortfolio(ABC):
                 f"Ticker '{ticker}' is not part of this portfolio's universe."
             )
 
+        module_name = _camel_to_snake(indicator_class_name)
         try:
-            module_name = _camel_to_snake(indicator_class_name)
             module = importlib.import_module(f"src.portfolios.indicators.{module_name}")
             indicator_class = getattr(module, indicator_class_name)
         except (ImportError, AttributeError):
@@ -332,8 +331,8 @@ class BasePortfolio(ABC):
             current_time=current_time,
             executor=self.executor,
             portfolio_config=self.portfolio_config_dict,
-            order_manager=self._order_manager,
-        )
+            order_manager=self.order_manager,
+            )
 
         self.OnData(context)
 
