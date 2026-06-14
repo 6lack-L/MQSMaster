@@ -108,7 +108,7 @@ def test_sentiment_processor_model_load(monkeypatch):
 
     class _StubModel:
         @classmethod
-        def from_pretrained(cls, _model_dir, torch_dtype=None):
+        def from_pretrained(cls, _model_dir, torch_dtype=None, trust_remote_code=None, **kwargs):
             return cls()
 
         def to(self, _device):

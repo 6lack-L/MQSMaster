@@ -3,13 +3,15 @@ import pytest
 
 from src.orchestrator.backfill.backfill_cli import DATE_FMT, build_parser
 
+# integration + workflow_backfill apply to every test in this module. smoke is
+# applied per-test so the real-execution test below can stay out of the PR gate.
 pytestmark = [
     pytest.mark.integration,
-    pytest.mark.smoke,
     pytest.mark.workflow_backfill,
 ]
 
 
+@pytest.mark.smoke
 def test_backfill_cli_specific_parsing():
     parser = build_parser()
     args = parser.parse_args(
@@ -18,22 +20,26 @@ def test_backfill_cli_specific_parsing():
             "--start",
             "010124",
             "--end",
-            "050124",
+            "010224",
             "--tickers",
             "AAPL",
             "MSFT",
             "--interval",
-            "5",
+            "1",
+            "--dry-run"
         ]
     )
 
     assert args.command == "specific"
     assert args.start.strftime(DATE_FMT) == "010124"
-    assert args.end.strftime(DATE_FMT) == "050124"
+    assert args.end.strftime(DATE_FMT) == "010224"
     assert args.tickers == ["AAPL", "MSFT"]
-    assert args.interval == 5
+    assert args.interval == 1
+    assert args.dry_run is True
 
-def test_concurrent_backfill():
+
+@pytest.mark.smoke
+def test_concurrent_backfill_parsing():
     parser = build_parser()
     args = parser.parse_args(
         [
@@ -41,7 +47,7 @@ def test_concurrent_backfill():
             "--start",
             "010124",
             "--end",
-            "050124",
+            "010224",
             "--tickers",
             "AAPL",
             "MSFT",
@@ -54,10 +60,32 @@ def test_concurrent_backfill():
 
     assert args.command == "concurrent"
     assert args.start.strftime(DATE_FMT) == "010124"
-    assert args.end.strftime(DATE_FMT) == "050124"
+    assert args.end.strftime(DATE_FMT) == "010224"
     assert args.tickers == ["AAPL", "MSFT"]
     assert args.interval == 5
     assert args.threads == 4
+
+
+@pytest.mark.db
+@pytest.mark.api
+def test_concurrent_backfill_execution():
+    parser = build_parser()
+    args = parser.parse_args(
+        [
+            "concurrent",
+            "--start",
+            "010124",
+            "--end",
+            "010224",
+            "--tickers",
+            "AAPL",
+            "MSFT",
+            "--interval",
+            "5",
+            "--threads",
+            "4"
+        ]
+    )
 
     concurrent_backfill(
         tickers=args.tickers,
@@ -67,8 +95,8 @@ def test_concurrent_backfill():
         threads=args.threads,
     )
 
-    
 
+@pytest.mark.smoke
 def test_backfill_cli_inject_csv_parsing():
     parser = build_parser()
     args = parser.parse_args(

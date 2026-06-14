@@ -1,4 +1,4 @@
-from src.oms.order_structs import OrderStatus, AlgoType, Side, ParentOrder, ChildOrder
+from src.oms.order_structs import OrderStatus, AlgoType, Side, ParentOrder, ChildOrder, tz
 from src.oms.scheduler import Scheduler
 from datetime import datetime
 from typing import Optional, Iterable
@@ -45,7 +45,7 @@ def _build_parent(
     parent.avg_fill_price = 0.0
     parent.duration_minutes = int(duration_minutes)
     if timestamp is None:
-        timestamp = datetime.now()
+        timestamp = datetime.now(tz)
     parent.created_at = timestamp
     parent.updated_at = timestamp
     return parent
@@ -181,7 +181,7 @@ class OrderManager:
             parent_order.status = OrderStatus.FILLED
         else:
             parent_order.status = OrderStatus.PARTIALLY_FILLED
-        parent_order.updated_at = datetime.now()
+        parent_order.updated_at = datetime.now(tz)
         self._tracker_info(
             "Parent order %s fill update filled=%s avg_price=%s status=%s",
             parent_order.order_id,
@@ -196,7 +196,7 @@ class OrderManager:
         if parent_order is None:
             raise ValueError(f"Unknown parent order: {order_id}")
         parent_order.status = OrderStatus.CANCELLED
-        parent_order.updated_at = datetime.now()
+        parent_order.updated_at = datetime.now(tz)
         if hasattr(self.scheduler, "cancel_parent"):
             self.scheduler.cancel_parent(order_id)
         self._tracker_info("Cancelled parent order %s", order_id)

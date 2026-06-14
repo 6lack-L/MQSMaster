@@ -401,8 +401,12 @@ class TestStrategyContext:
         )
 
         assert context.time == current_time
-        assert isinstance(context.Market, MarketData)
-        assert isinstance(context.Portfolio, PortfolioManager)
+        # Type checked by class name, not isinstance: the dual import idiom
+        # (try `portfolios.*` then `src.portfolios.*`) means StrategyContext may
+        # build these objects from a different module object than the test's
+        # `src.portfolios.*` import, so a cross-path isinstance spuriously fails.
+        assert type(context.Market).__name__ == "MarketData"
+        assert type(context.Portfolio).__name__ == "PortfolioManager"
         assert context.Portfolio.cash == 50000.0
         assert context.Portfolio.total_value == 150000.0
 

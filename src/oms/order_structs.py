@@ -5,6 +5,8 @@ from typing import Optional
 import uuid
 import pytz
 
+tz = pytz.timezone("America/New_York")
+
 
 class OrderStatus(Enum):
     PENDING = "PENDING"  # Created, not yet started
@@ -26,11 +28,6 @@ class Side(Enum):
     BUY = "BUY"
     SELL = "SELL"
 
-class OrderType(Enum):
-    Market = "MARKET"
-    Limit = "LIMIT"
-    Stop = "STOP"
-
 @dataclass
 class ParentOrder:
     order_id: str = field(default_factory=lambda: str(uuid.uuid4()))
@@ -45,8 +42,8 @@ class ParentOrder:
     avg_fill_price: float = 0.0
     confidence: float = 1.0
     duration_minutes: int = 30  # How long the algo has to work the order
-    created_at: datetime = field(default_factory=datetime.now)
-    updated_at: datetime = field(default_factory=datetime.now)
+    created_at: datetime = field(default_factory=lambda: datetime.now(tz))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(tz))
 
     @property
     def remaining_quantity(self) -> float:
@@ -64,7 +61,7 @@ class ParentOrder:
             else 0.0
         )
 
-tz = pytz.timezone("America/New_York")
+
 @dataclass
 class ChildOrder:
     child_id: str = field(default_factory=lambda: str(uuid.uuid4()))
@@ -77,5 +74,5 @@ class ChildOrder:
     exec_price: float = 0.0
     status: OrderStatus = OrderStatus.PENDING
     slice_index: int = 0  # Which slice (0, 1, 2, ...)
-    created_at: datetime = field(default_factory=datetime.now)
-    updated_at: datetime = field(default_factory=datetime.now)
+    created_at: datetime = field(default_factory=lambda: datetime.now(tz))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(tz))
