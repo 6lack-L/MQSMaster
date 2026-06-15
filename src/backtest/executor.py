@@ -1,8 +1,14 @@
 import logging
 import math
+from collections import namedtuple
 from typing import Dict, List
 
 import pandas as pd
+
+# Result of the default sizing model: the share quantity to trade, the signed
+# desired notional (its sign drives BUY vs SELL settlement), and the execution
+# price used. Shared by the OMS path (reads .quantity) and execute_trade.
+Sizing = namedtuple("Sizing", ["quantity", "desired_notional", "exec_price"])
 
 
 class BacktestExecutor:
@@ -22,7 +28,6 @@ class BacktestExecutor:
         self.tickers = tickers
         self.leverage = leverage
         self.slippage = slippage
-        self._order_manager = None
         # --- Unified Portfolio State ---
         self.cash = initial_capital
         self.positions: Dict[str, float] = {ticker: 0.0 for ticker in tickers}
@@ -88,6 +93,99 @@ class BacktestExecutor:
         buying_power = (portfolio_equity * self.leverage) - gross_position_value
         return max(0, buying_power)
 
+    def default_trade_size(
+        self,
+        signal_type,
+        ticker,
+        arrival_price,
+        confidence,
+        cash,
+        positions,
+        port_notional,
+        ticker_weight,
+    ):
+        """Size a trade with the default target-weight model, without filling.
+
+        Single sizing entry point for both the OMS path (which reads
+        ``.quantity`` to register a parent order) and ``execute_trade`` (which
+        also needs ``.desired_notional`` for BUY/SELL direction and
+        ``.exec_price`` for the fill). Returns a ``Sizing`` with ``quantity == 0``
+        on any no-trade. ``cash``/``positions`` are accepted for signature parity
+        with the live executor; backtest sizes against its own ``self`` state.
+        """
+        try:
+            port_notional = float(port_notional)
+            arrival_price = float(arrival_price)
+            confidence = max(0.0, min(1.0, float(confidence)))
+            ticker_weight = float(ticker_weight)
+        except (ValueError, TypeError) as e:
+            self.logger.error(f"Numeric conversion failed in default_trade_size: {e}")
+            return Sizing(0, 0.0, 0.0)
+
+        signal_type = signal_type.upper()
+        if signal_type not in ("BUY", "SELL", "HOLD"):
+            self.logger.warning(
+                f"Invalid signal type '{signal_type}' for {ticker}. Must be BUY, SELL, or HOLD."
+            )
+            return Sizing(0, 0.0, 0.0)
+        if signal_type == "HOLD" or confidence == 0.0:
+            self.logger.debug(
+                "Skip trade: signal=%s confidence=%.2f", signal_type, confidence
+            )
+            return Sizing(0, 0.0, 0.0)
+
+        exec_price = self._apply_slippage(arrival_price, signal_type)
+        if exec_price <= 0:
+            self.logger.warning(
+                f"Cannot size trade for {ticker}: invalid exec price {exec_price} after slippage."
+            )
+            return Sizing(0, 0.0, exec_price)
+
+        # If ticker_weight is 0 (no current position), default to equal-weight.
+        if ticker_weight == 0.0:
+            if not self.tickers:
+                self.logger.error("No tickers list available for fallback allocation.")
+                return Sizing(0, 0.0, exec_price)
+            ticker_weight = 1.0 / len(self.tickers)
+
+        buying_power = self._calculate_buying_power(port_notional)
+
+        current_quantity = self.positions.get(ticker, 0.0)
+        current_notional_value = current_quantity * exec_price
+
+        target_notional = port_notional * ticker_weight
+        # A SELL signal targets a negative (short) position
+        if signal_type == "SELL":
+            target_notional *= -1
+
+        desired_trade_notional = (target_notional - current_notional_value) * confidence
+
+        # Ignore trades smaller than $1.00 notional.
+        if abs(desired_trade_notional) < 1.0:
+            self.logger.debug(
+                "Skip trade: desired_notional too small (%.2f) for %s",
+                desired_trade_notional,
+                ticker,
+            )
+            return Sizing(0, desired_trade_notional, exec_price)
+
+        # For buys, we are also constrained by the actual cash available.
+        if desired_trade_notional > 0:  # This is a BUY operation
+            tradable_notional = min(
+                abs(desired_trade_notional), buying_power, self.cash
+            )
+        else:  # This is a SELL/SHORT operation
+            tradable_notional = min(abs(desired_trade_notional), buying_power)
+
+        if tradable_notional < 1.0:
+            return Sizing(0, desired_trade_notional, exec_price)
+
+        quantity_to_trade = math.floor(tradable_notional / exec_price)
+        if quantity_to_trade <= 0:
+            return Sizing(0, desired_trade_notional, exec_price)
+
+        return Sizing(quantity_to_trade, desired_trade_notional, exec_price)
+
     def execute_trade(
         self,
         portfolio_id,
@@ -100,135 +198,37 @@ class BacktestExecutor:
         port_notional,
         ticker_weight,
         timestamp,
-        order_manager=None,
     ):
-        try:
-            cash = float(cash)
-            port_notional = float(port_notional)
-            arrival_price = float(arrival_price)
-            confidence = float(confidence)
-            ticker_weight = float(ticker_weight)
-        except (ValueError, TypeError) as e:
-            self.logger.error(f"Numeric conversion failed: {e}")
+        # Size with the shared default model (handles coercion, signal/price
+        # validation, equal-weight fallback, and buying-power/cash constraints).
+        sizing = self.default_trade_size(
+            signal_type=signal_type,
+            ticker=ticker,
+            arrival_price=arrival_price,
+            confidence=confidence,
+            cash=cash,
+            positions=positions,
+            port_notional=port_notional,
+            ticker_weight=ticker_weight,
+        )
+        if sizing.quantity <= 0:
             return
 
+        quantity_to_trade = sizing.quantity
+        exec_price = sizing.exec_price
         signal_type = signal_type.upper()
-        if signal_type not in ("BUY", "SELL", "HOLD"):
-            self.logger.warning(
-                f"Invalid signal type '{signal_type}' for {ticker}. Must be BUY, SELL, or HOLD."
-            )
-            return
 
-        confidence = max(0.0, min(1.0, confidence))
-        if signal_type == "HOLD" or confidence == 0.0:
-            self.logger.debug(
-                "Skip trade: signal=%s confidence=%.2f", signal_type, confidence
-            )
-            return
-
-        # 1. Calculate buying power before fetching the final exec_price Buying power constrains BOTH new buys and new shorts.
-        buying_power = self._calculate_buying_power(port_notional)
-
-        # 2. Get the final execution price
-        exec_price = self._apply_slippage(arrival_price, signal_type)
-        if exec_price <= 0:
-            self.logger.warning(
-                f"Cannot execute trade for {ticker}: Invalid execution price of {exec_price} after slippage."
-            )
-            return
-
-        # 3. Determine target notional
-        # If ticker_weight is 0 (no current position), default to equal-weight allocation
-        if ticker_weight == 0.0:
-            tickers_list = self.tickers
-            if not tickers_list or len(tickers_list) == 0:
-                self.logger.error("No tickers list available for fallback allocation.")
-                return
-            ticker_weight = 1.0 / len(tickers_list)
-
-        current_quantity = self.positions.get(ticker, 0.0)
-        current_notional_value = current_quantity * exec_price
-
-        target_notional = port_notional * ticker_weight
-        # A SELL signal targets a negative (short) position
-        if signal_type == "SELL":
-            target_notional *= -1
-
-        adjustment_notional = target_notional - current_notional_value
-        desired_trade_notional = adjustment_notional * confidence
-
-        # --- Constraint Application (Mirrors Live Logic) ---
-        # Ignore trades smaller than $1.00 notional
-        if abs(desired_trade_notional) < 1.0:
-            self.logger.debug(
-                "Skip trade: desired_notional too small (%.2f) for %s",
-                desired_trade_notional,
-                ticker,
-            )
-            return
-
-        # --- Constraint Application (Mirrors Live Logic) ---
-        # Buying power constrains BOTH new buys and new shorts.
-        buying_power = self._calculate_buying_power(port_notional)
-
-        # For buys, we are also constrained by the actual cash available.
-        if desired_trade_notional > 0:  # This is a BUY operation
-            tradable_notional = min(
-                abs(desired_trade_notional), buying_power, self.cash
-            )
-        else:  # This is a SELL/SHORT operation
-            tradable_notional = min(abs(desired_trade_notional), buying_power)
-
-        if tradable_notional < 1.0:
-            return
-
-        quantity_to_trade = math.floor(tradable_notional / exec_price)
-
-        if quantity_to_trade <= 0:
-            return
-        # --- Enter the order into the OMS if available; it may adjust the
-        # quantity before the fill is applied. On any OMS failure we fall back
-        # to the executor's already-sized quantity (proven direct path).
-        # Prefer an OMS passed by the caller (StrategyContext); fall back to the
-        # one attached by the runner so the proven backtest path is unchanged. ---
-        effective_order_manager = order_manager or self._order_manager
-        if effective_order_manager is not None:
-            try:
-                self.logger.debug(
-                    f"Submitting order to OrderManager for {ticker}: "
-                    f"desired_notional={desired_trade_notional:.2f}, "
-                    f"tradable_notional={tradable_notional:.2f}, "
-                    f"quantity_to_trade={quantity_to_trade}"
-                )
-                parent_order = effective_order_manager.process_order(
-                    portfolio_id=portfolio_id,
-                    ticker=ticker,
-                    side=signal_type,
-                    confidence=confidence,
-                    arrival_price=arrival_price,
-                    total_quantity=quantity_to_trade,
-                    timestamp=timestamp,
-                )
-                quantity_to_trade = parent_order.total_quantity
-                self.logger.info(
-                    f"OrderManager registered order {parent_order.order_id} for {ticker}: "
-                    f"quantity={quantity_to_trade}, exec_price={exec_price:.2f}"
-                )
-            except Exception as e:
-                self.logger.error(f"OrderManager.process_order failed for {ticker}: {e}")
-        else:
-            self.logger.debug(
-                "No OrderManager available; executing trade directly for %s", ticker
-            )
-
-        # --- Execute the Trade (apply the fill to portfolio state) ---
+        # --- Execute the Trade (settle the fill into the executor's own
+        # unified portfolio state; the ``cash``/``positions`` params are kept
+        # only for signature parity with the live executor). ---
         trade_value = quantity_to_trade * exec_price
-        if desired_trade_notional > 0:  # Finalizing a BUY
+        current_quantity = self.positions.get(ticker, 0.0)
+        if sizing.desired_notional > 0:  # Finalizing a BUY
             self.cash -= trade_value
-            self.positions[ticker] += quantity_to_trade
+            self.positions[ticker] = current_quantity + quantity_to_trade
         else:  # Finalizing a SELL
             self.cash += trade_value
-            self.positions[ticker] -= quantity_to_trade
+            self.positions[ticker] = current_quantity - quantity_to_trade
 
         self.trade_log.append(
             {
@@ -236,7 +236,7 @@ class BacktestExecutor:
                 "portfolio_id": portfolio_id,
                 "ticker": ticker,
                 "signal_type": signal_type,
-                "confidence": confidence,
+                "confidence": max(0.0, min(1.0, float(confidence))),
                 "shares": quantity_to_trade,
                 "fill_price": exec_price,
                 "cash_after": self.cash,

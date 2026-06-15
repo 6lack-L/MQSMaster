@@ -10,6 +10,7 @@ try:
     from portfolios import toolkit  
     from portfolios.market_data_api import MarketData
     from portfolios.portfolio_interface import PortfolioManager
+    
 except ImportError:
     logging.warning("toolkit relative import failed; using absolute import.")
     try:
@@ -94,7 +95,38 @@ class StrategyContext:
                 asset_data.Close,
             )
             return
-        self._executor.execute_trade(
+
+        if self._order_manager is not None:
+            # OMS path: size with the executor's default model, then register the
+            # order with the OMS (which owns execution from here).
+            sizing = self._executor.default_trade_size(
+                signal_type=signal_type,
+                ticker=ticker,
+                arrival_price=asset_data.Close,
+                confidence=confidence,
+                cash=self.Portfolio.cash,
+                positions=self._positions_df,
+                port_notional=self.Portfolio.total_value,
+                ticker_weight=self.Portfolio.get_asset_weight(ticker, asset_data.Close),
+            )
+            if sizing.quantity > 0:
+                try:
+                    self._order_manager.process_order(
+                        portfolio_id=self._portfolio_config["id"],
+                        ticker=ticker,
+                        side=signal_type,
+                        confidence=confidence,
+                        arrival_price=asset_data.Close,
+                        total_quantity=sizing.quantity,
+                        timestamp=self.time,
+                    )
+                except Exception as e:
+                    logging.error(
+                        "OrderManager.process_order failed for %s: %s", ticker, e
+                    )
+        else:
+            # Direct execution: the executor sizes and fills in one call.
+            self._executor.execute_trade(
                 portfolio_id=self._portfolio_config["id"],
                 ticker=ticker,
                 signal_type=signal_type,
@@ -105,5 +137,4 @@ class StrategyContext:
                 port_notional=self.Portfolio.total_value,
                 ticker_weight=self.Portfolio.get_asset_weight(ticker, asset_data.Close),
                 timestamp=self.time,
-                order_manager=self._order_manager,
             )

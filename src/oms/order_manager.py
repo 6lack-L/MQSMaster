@@ -120,7 +120,7 @@ class OrderManager:
             arrival_price=arrival_price,
             timestamp=timestamp,
         )
-        logger.info(
+        self.tracker.info(
             "Order Created order for %s %s qty=%s timestamp=%s",
             parent_order.order_id,
             parent_order.signal_type.value,
@@ -135,19 +135,14 @@ class OrderManager:
         self.orders.append(parent_order)
         self.orders_by_id[parent_order.order_id] = parent_order
 
-        logger.info(
+        self.tracker.info(
             "Submitted order %s %s qty=%s algo=%s",
             parent_order.order_id,
             parent_order.ticker,
             parent_order.total_quantity,
             parent_order.algo_type.value,
         )
-        self._tracker_info(
-            "Submitted parent order %s ticker=%s qty=%s",
-            parent_order.order_id,
-            parent_order.ticker,
-            parent_order.total_quantity,
-        )
+
 
         self.scheduler.schedule_order(parent_order)
         return parent_order

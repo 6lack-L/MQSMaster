@@ -139,8 +139,9 @@ class BacktestRunner:
             tickers=self.portfolio.tickers,
             slippage=self.slippage,
         )
-        # Attach the OMS to its consumer; None keeps the proven direct path.
-        self.executor._order_manager = self.order_manager
+        # Thread the OMS through the portfolio so it reaches StrategyContext
+        # (the single shared seam, same as live); None keeps the direct path.
+        self.portfolio.order_manager = self.order_manager
         self.portfolio._original_executor = getattr(self.portfolio, "executor", None)
         self.portfolio.executor = self.executor
 

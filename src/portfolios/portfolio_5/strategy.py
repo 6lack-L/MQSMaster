@@ -32,9 +32,10 @@ class RBPStrategy(BasePortfolio):
         debug=False,
         config_dict=None,
         backtest_start_date=None,
+        order_manager=None
     ):
         super().__init__(
-            db_connector, executor, debug, config_dict, backtest_start_date
+            db_connector, executor, debug, config_dict, backtest_start_date, order_manager
         )
         self.logger = logging.getLogger(
             f"{self.__class__.__name__}_{self.portfolio_id}"

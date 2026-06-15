@@ -60,42 +60,24 @@ class RunEngine:
                 with open(config_path, "r") as f:
                     config_data = json.load(f)
 
-                # Gate the OMS behind config: when disabled (or init fails) the
-                # order manager stays None and the proven direct-execution path
-                # is used. Scoped per-portfolio so one portfolio's OMS never
-                # leaks onto another.
-                order_manager = None
-                # Use the canonical PORTFOLIO_ID key (matches BasePortfolio and
-                # the backtest engine); configs do not carry an "id" key.
-                portfolio_id = config_data.get("PORTFOLIO_ID", "0")
-                load_oms = config_data.get("OMS", {}).get("enabled", False)
-                if load_oms:
-                    self.logger.debug(
-                        f"Initializing OrderManager for portfolio {portfolio_id} with OMS enabled."
-                    )
-                    try:
-                        from src.oms.order_manager import OrderManager
-                        order_manager = OrderManager(
-                            portfolio_id=portfolio_id,
-                            config=config_data.get("OMS", {})
-                        )
-                        self.logger.info(
-                            f"OrderManager initialized for portfolio {portfolio_id} with OMS config."
-                        )
-                    except Exception as e:
-                        self.logger.error(
-                            f"Failed to initialize OrderManager for portfolio {portfolio_id}: {e}"
-                        )
-                        continue
+                # Gate the OMS behind config (per-portfolio, fail-soft to the proven direct-execution path). Construction is centralized in src.oms.factory so the live and backtest engines cannot drift on how they read OMS config or resolve the portfolio id.
+                from src.oms.factory import build_order_manager, resolve_portfolio_id
+                portfolio_id = resolve_portfolio_id(config_data)
+                order_manager = build_order_manager(
+                    config_data, portfolio_id, logger=self.logger
+                )
 
                 # --- UPDATED: Instantiate with the loaded config_dict ---
                 portfolio_instance = portfolio_cls(
                     db_connector=self.db_connector,
                     executor=self.executor,
-                    order_manager=order_manager,
                     debug=self.debug,
                     config_dict=config_data,
                 )
+                # Thread the OMS through the portfolio post-construction, matching
+                # BacktestRunner (`self.portfolio.order_manager = ...`), so the two
+                # engines wire the OMS the same way. None keeps the direct path.
+                portfolio_instance.order_manager = order_manager
                 self.portfolios.append(portfolio_instance)
                 self.failure_counts[portfolio_instance.portfolio_id] = 0
                 self.logger.info(

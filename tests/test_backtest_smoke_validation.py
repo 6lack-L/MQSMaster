@@ -67,6 +67,27 @@ def _build_portfolio(rows, tickers):
     )
 
 
+def test_backtest_runner_wires_order_manager_post_construction():
+    """BacktestRunner threads the OMS onto the portfolio post-construction
+    (mirroring the live engine) when its executor is set up."""
+    rows = _build_rows(datetime(2025, 1, 1, 9, 30), 10, ["AAPL"])
+    portfolio = _build_portfolio(rows, ["AAPL"])
+    assert portfolio.order_manager is None
+
+    sentinel_om = object()
+    runner = BacktestRunner(
+        portfolio=portfolio,
+        start_date="2025-01-01",
+        end_date="2025-01-02",
+        initial_capital=100000.0,
+        slippage=0.0,
+        order_manager=sentinel_om,
+    )
+    runner._setup_executor()
+
+    assert portfolio.order_manager is sentinel_om
+
+
 def test_backtest_completion(monkeypatch):
     rows = _build_rows(datetime(2025, 1, 1, 9, 30), 10, ["AAPL"])
     portfolio = _build_portfolio(rows, ["AAPL"])

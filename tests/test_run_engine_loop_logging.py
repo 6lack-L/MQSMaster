@@ -1,3 +1,4 @@
+import json
 import logging
 
 from src.live_trading.engine import RunEngine
@@ -81,6 +82,43 @@ def test_circuit_breaker_stops_after_threshold(monkeypatch, caplog):
 
     assert engine.failure_counts[portfolio.portfolio_id] == 3
     assert any("CIRCUIT BREAKER TRIPPED" in rec.getMessage() for rec in caplog.records)
+
+
+def test_load_portfolios_wires_order_manager_post_construction(monkeypatch, tmp_path):
+    """RunEngine.load_portfolios assigns the OMS onto the portfolio
+    post-construction (mirroring BacktestRunner), not via the constructor.
+
+    The fake portfolio intentionally does NOT accept ``order_manager`` in its
+    ``__init__`` so that a revert to constructor-passing would fail loudly with
+    a TypeError instead of silently regressing.
+    """
+    from src.live_trading import engine as engine_mod
+
+    sentinel_om = object()
+
+    class _InitOnlyPortfolio:
+        def __init__(self, db_connector, executor, debug=False, config_dict=None):
+            self.portfolio_id = config_dict["PORTFOLIO_ID"]
+            self.order_manager = None
+
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps({"PORTFOLIO_ID": "live-test"}))
+
+    monkeypatch.setattr(
+        engine_mod.inspect, "getfile", lambda _cls: str(tmp_path / "strategy.py")
+    )
+    monkeypatch.setattr(
+        "src.oms.factory.resolve_portfolio_id", lambda cfg: cfg["PORTFOLIO_ID"]
+    )
+    monkeypatch.setattr(
+        "src.oms.factory.build_order_manager", lambda *a, **k: sentinel_om
+    )
+
+    engine = RunEngine(db_connector=object(), executor=object())
+    engine.load_portfolios([_InitOnlyPortfolio])
+
+    assert len(engine.portfolios) == 1
+    assert engine.portfolios[0].order_manager is sentinel_om
 
 
 def test_debug_mode_runs_single_cycle(monkeypatch):

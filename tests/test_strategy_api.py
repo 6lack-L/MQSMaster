@@ -463,11 +463,11 @@ class TestStrategyContext:
         assert call_args["signal_type"] == "BUY"
         assert call_args["confidence"] == 0.8
         assert call_args["portfolio_id"] == "1"
-        # When no OMS is supplied, the context forwards order_manager=None so the
-        # executor uses its proven direct path.
-        assert call_args["order_manager"] is None
+        # The OMS is not threaded into execute_trade; the executor never sees it
+        # (it is wired at the StrategyContext seam instead).
+        assert "order_manager" not in call_args
 
-    def test_order_manager_threaded_to_executor(
+    def test_order_manager_path_sizes_and_registers(
         self,
         market_data,
         cash_data,
@@ -476,12 +476,19 @@ class TestStrategyContext:
         mock_executor,
         portfolio_config,
     ):
-        """A supplied OrderManager is threaded through to execute_trade as a
-        call parameter (the live-pipeline wiring, thread-safe with a shared
-        executor)."""
+        """When an OrderManager is supplied, StrategyContext sizes via the
+        executor's default_trade_size and registers the order with the OMS
+        (which owns execution); it does NOT call execute_trade on that path, and
+        the executor never holds OMS state."""
         from src.oms.order_manager import OrderManager
 
         order_manager = OrderManager(portfolio_id="1", config={})
+        # The executor sizes the order to 10 shares (Sizing.quantity == 10).
+        from src.backtest.executor import Sizing
+
+        mock_executor.default_trade_size.return_value = Sizing(
+            quantity=10, desired_notional=1000.0, exec_price=100.0
+        )
         current_time = pd.Timestamp("2024-01-02", tz="America/New_York")
 
         context = StrategyContext(
@@ -497,9 +504,14 @@ class TestStrategyContext:
 
         context.buy("AAPL", confidence=0.8)
 
-        mock_executor.execute_trade.assert_called_once()
-        call_args = mock_executor.execute_trade.call_args[1]
-        assert call_args["order_manager"] is order_manager
+        # OMS path sizes via default_trade_size and registers the order; the
+        # direct execute_trade fill path is not used.
+        mock_executor.default_trade_size.assert_called_once()
+        mock_executor.execute_trade.assert_not_called()
+        assert len(order_manager.orders_by_id) == 1
+        parent = next(iter(order_manager.orders_by_id.values()))
+        assert parent.total_quantity == 10
+        assert parent.ticker == "AAPL"
 
     def test_sell_method(
         self,

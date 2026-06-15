@@ -671,25 +671,17 @@ class BacktestEngine:
                         f"\n--- Running backtest for portfolio: {portfolio_instance.portfolio_id} ---"
                     )
 
-                    # Gate the OMS behind config, mirroring the live engine: build
-                    # the OrderManager only when OMS.enabled. The runner attaches it
-                    # to the executor (the OMS consumer). On failure or when disabled it stays None and direct-execution path is used.
-                    order_manager = None
-                    if config_data.get("OMS", {}).get("enabled", False):
-                        try:
-                            from src.oms.order_manager import OrderManager
-                            order_manager = OrderManager(
-                                portfolio_id=portfolio_instance.portfolio_id,
-                                config=config_data.get("OMS", {}),
-                            )
-                            self.logger.info(
-                                f"OrderManager initialized for portfolio {portfolio_instance.portfolio_id} with OMS config."
-                            )
-                        except Exception as e:
-                            self.logger.error(
-                                f"Failed to initialize OrderManager for portfolio {portfolio_instance.portfolio_id}: {e}"
-                            )
-                            order_manager = None
+                    # Gate the OMS behind config (shared with the live engine via
+                    # src.oms.factory). The runner attaches the result to the
+                    # per-portfolio executor; None ⇒ proven direct-execution path.
+                    # Reuse the portfolio's already-parsed id rather than re-reading
+                    # config so the OMS keys off the same value as the DB books.
+                    from src.oms.factory import build_order_manager
+                    order_manager = build_order_manager(
+                        config_data,
+                        portfolio_instance.portfolio_id,
+                        logger=self.logger,
+                    )
 
                     runner = BacktestRunner(
                         portfolio=portfolio_instance,
