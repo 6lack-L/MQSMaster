@@ -675,7 +675,6 @@ class BacktestEngine:
                     # src.oms.factory). The runner attaches the result to the
                     # per-portfolio executor; None ⇒ proven direct-execution path.
                     # Reuse the portfolio's already-parsed id rather than re-reading
-                    # config so the OMS keys off the same value as the DB books.
                     from src.oms.factory import build_order_manager
                     order_manager = build_order_manager(
                         config_data,
