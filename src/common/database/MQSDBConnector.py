@@ -160,7 +160,7 @@ class MQSDBConnector:
         sql: str | bytes,
         values: tuple[Any] | None = None,
         fetch: bool=False
-    ) -> dict[str, str]:
+    ) -> dict[str, Any]:
         """
         Executes a query with optional parameters.
         If fetch=True, returns results.
@@ -181,7 +181,7 @@ class MQSDBConnector:
                     return {
                         "status": "success",
                         "message": "Query executed successfully.",
-                        "data": str(result),
+                        "data": result,
                     }
                 conn.commit()
                 return {"status": "success", "message": "Query executed successfully."}

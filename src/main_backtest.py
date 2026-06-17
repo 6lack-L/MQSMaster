@@ -60,12 +60,19 @@ COST_MODEL = CostModel.for_large_cap()  # fixed 0.5 + half-spread 2 + 1.0*sigma*
 BACKTEST_MODE = "event"  # or "fast"
 BACKTEST_NUM_BATCHES = None  # Set to an integer to override auto batch(for best results use the number of cores on your machine).
 DEFAULT_PORTFOLIO_CLASSES = [
-    Portfolio6Strategy,
+    VolMomentum,
 ]
 
 AVAILABLE_PORTFOLIO_CLASSES = [
-    
-    Portfolio6Strategy
+    CrossoverRmiStrategy,
+    VolMomentum,
+    MomentumStrategy,
+    RegimeAdaptiveStrategy,
+    TrendRotateStrategy,
+    RBPStrategy,
+    Portfolio6Strategy,
+    Portfolio7Strategy,
+    Portfolio8Strategy,
 ]
 
 # Adapters for external vectorized backtest approximations of the above strategies.
