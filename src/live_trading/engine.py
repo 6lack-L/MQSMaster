@@ -60,6 +60,13 @@ class RunEngine:
                 with open(config_path, "r") as f:
                     config_data = json.load(f)
 
+                # Gate the OMS behind config (per-portfolio, fail-soft to the proven direct-execution path). Construction is centralized in src.oms.factory so the live and backtest engines cannot drift on how they read OMS config or resolve the portfolio id.
+                from src.oms.factory import build_order_manager, resolve_portfolio_id
+                portfolio_id = resolve_portfolio_id(config_data)
+                order_manager = build_order_manager(
+                    config_data, portfolio_id, logger=self.logger
+                )
+
                 # --- UPDATED: Instantiate with the loaded config_dict ---
                 portfolio_instance = portfolio_cls(
                     db_connector=self.db_connector,
@@ -67,6 +74,10 @@ class RunEngine:
                     debug=self.debug,
                     config_dict=config_data,
                 )
+                # Thread the OMS through the portfolio post-construction, matching
+                # BacktestRunner (`self.portfolio.order_manager = ...`), so the two
+                # engines wire the OMS the same way. None keeps the direct path.
+                portfolio_instance.order_manager = order_manager
                 self.portfolios.append(portfolio_instance)
                 self.failure_counts[portfolio_instance.portfolio_id] = 0
                 self.logger.info(

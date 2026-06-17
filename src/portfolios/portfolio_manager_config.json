@@ -12,29 +12,11 @@
   "master_portfolio_id": "0",
   "currency": "USD",
   "portfolio_weights": {
-    "1": 0.10,
-    "2": 0.90,
-    "7": 0.0,
-    "8": 0.0
-  },
-  "circuit_breaker": {
-    "enabled": true,
-    "state_path": "src/risk_manager/.circuit_breaker_state.json",
-    "trip_throttle": -0.15,
-    "trip_pause": -0.25,
-    "rearm_throttle": -0.075,
-    "rearm_pause": -0.15,
-    "trip_window_days": 90,
-    "rearm_window_days": 30,
-    "min_dwell_days": 10,
-    "min_history_days": 30
-  },
-  "rbp_overlay": {
-    "enabled": true,
-    "blend_weight": 0.10,
-    "tanh_scale": 20.0,
-    "stale_after_hours": 24,
-    "cache_ttl_seconds": 60,
-    "disabled_portfolios": ["5", "8"]
+    "1": 0.20,
+    "2": 0.20,
+    "3": 0.20,
+    "4": 0.20,
+    "5": 0.20,
+    "6": 0.0
   }
 }

@@ -4,7 +4,17 @@ from typing import Optional
 
 import pandas as pd
 
-_LOGGER = logging.getLogger(__name__)
+try:
+    from portfolios import (
+        toolkit,  # This import registers the .toolkit accessor globally
+    )
+except ImportError:
+    logging.warning("toolkit relative import failed; using absolute import.")
+    try:
+        from src.portfolios import toolkit
+    except ImportError:
+        logging.error("Failed to import toolkit from both relative and absolute paths.")
+        raise
 
 
 class AssetData:
@@ -62,6 +72,7 @@ class AssetData:
         self.Low = _to_float(self.latest_row.get("low_price"))
         self.Close = _to_float(self.latest_row.get("close_price"))
         self.Volume = _to_float(self.latest_row.get("volume"))
+        self.Sentiment = _to_float(self.latest_row.get("avg_sentiment"))
 
         if self.Close is None:
             self.Exists = False
@@ -79,6 +90,7 @@ class AssetData:
         self.Close = None
         self.Volume = None
         self.Timestamp = None
+        self.Sentiment = None
 
     def History(self, lookback_period: str) -> pd.DataFrame:
         if self._df.empty:
@@ -109,7 +121,7 @@ class AssetData:
             try:
                 end_date = self._df.index.max()
             except Exception:
-                _LOGGER.warning(
+                logging.warning(
                     "AssetData.History failed to compute end_date; self._time=%s lookback_period=%s index=%s",
                     self._time,
                     lookback_period,
@@ -121,7 +133,7 @@ class AssetData:
         try:
             start_date = end_date - pd.to_timedelta(lookback_period)
         except Exception:
-            _LOGGER.warning(
+            logging.warning(
                 "AssetData.History failed to parse lookback_period; self._time=%s lookback_period=%s index=%s",
                 self._time,
                 lookback_period,

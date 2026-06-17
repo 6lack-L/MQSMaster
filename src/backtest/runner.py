@@ -30,14 +30,15 @@ class BacktestRunner:
         end_date: str | datetime | pd.Timestamp | None = None,
         initial_capital: float = 100000.0,
         slippage: float = 0.0,
-        cost_model: Any = None,
+        order_manager=None,
     ):
         """
         Initializes the BacktestRunner.
         """
-        self.portfolio: BasePortfolio = portfolio
-        self.logger: Logger = portfolio.logger
-        self.total_start_capital: float = initial_capital
+        self.portfolio = portfolio
+        self.logger = portfolio.logger
+        self.total_start_capital = initial_capital
+        self.order_manager = order_manager
 
         # FIX 3: Use new timezone-aware method
         self.start_date: datetime = self._ensure_datetime(start_date)
@@ -125,7 +126,10 @@ class BacktestRunner:
             slippage=self.slippage,
             cost_model=self.cost_model,
         )
-        #self.portfolio._original_executor = getattr(self.portfolio, "executor", None)
+        # Thread the OMS through the portfolio so it reaches StrategyContext
+        # (the single shared seam, same as live); None keeps the direct path.
+        self.portfolio.order_manager = self.order_manager
+        self.portfolio._original_executor = getattr(self.portfolio, "executor", None)
         self.portfolio.executor = self.executor
 
     def _run_event_loop(self) -> None:

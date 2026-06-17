@@ -676,16 +676,27 @@ class BacktestEngine:
                         backtest_start_date=pd.to_datetime(self.start_date),
                     )
                     self.logger.info(
-                        "\n--- Running backtest for portfolio: %s ---",
-                        portfolio_instance.portfolio_id
+                        f"\n--- Running backtest for portfolio: {portfolio_instance.portfolio_id} ---"
                     )
+
+                    # Gate the OMS behind config (shared with the live engine via
+                    # src.oms.factory). The runner attaches the result to the
+                    # per-portfolio executor; None ⇒ proven direct-execution path.
+                    # Reuse the portfolio's already-parsed id rather than re-reading
+                    from src.oms.factory import build_order_manager
+                    order_manager = build_order_manager(
+                        config_data,
+                        portfolio_instance.portfolio_id,
+                        logger=self.logger,
+                    )
+
                     runner = BacktestRunner(
                         portfolio=portfolio_instance,
                         start_date=self.start_date,
                         end_date=self.end_date,
                         initial_capital=self.initial_capital,
                         slippage=self.slippage,
-                        cost_model=self.cost_model,
+                        order_manager=order_manager,
                     )
                     trade_log = runner.run()
                     trade_logs.append(trade_log)

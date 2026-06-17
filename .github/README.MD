@@ -25,20 +25,21 @@ This guide provides step-by-step instructions to clone, install, and run MQSMast
 
 Before you begin, ensure you have the following software installed on your system:
 
-- [Python 3.12](https://www.python.org/downloads/)
-- [PostgreSQL](https://www.postgresql.org/download/) (Optional if connecting to an existing PostgreSQL database)
-- [PgAdmin4](https://www.pgadmin.org/download/) (Optional; facilitates database management)
+1. `Git: For cloning the repository.`
+1. `Python 3.12+: To run the application.(https://www.python.org/downloads/)`
+1. `PgAdmin4 (Not mandatory, will work fine without).`
 
+## Installation Steps
 
-### Step 1: Install pip and uv
-
-run the following to install `pip` and `uv`:
+Follow these steps precisely to set up your environment.
+### Install pip and uv
+run the following command to install pip and uv:
 
 1. `python3 -m pip install --upgrade pip`
-2. `pip install uv`
-3. Ensure `uv` is installed by running `uv --version`
-4. `uv python install python@3.12`
-5. `uv python pin python@3.12`
+1. `pip install uv`
+1. `uv python list` # to check if uv is installed correctly
+1. `uv python install python@3.12`
+1. `uv python pin python@3.12`
 
 #### Using Linux
 
@@ -50,7 +51,7 @@ If your computer is using Linux, the first two instructions may not work. Look u
 Open your terminal, navigate to the directory where you want to store the project, and run the following:
 
 1. `git clone https://github.com/MUNQuantSociety/MQSMaster.git`
-2. `cd MQSMaster`
+1. `cd MQSMaster`
 
 
 #### Download the .zip File
@@ -64,19 +65,30 @@ Open your terminal, navigate to the directory where you want to store the projec
 We will create a virtual environment named MQS to keep the project's dependencies isolated. Run the following:
 
 1. `uv venv MQS`
-2. `source MQS/bin/activate` # (On Windows, use this command instead: MQS\Scripts\activate)
 
-You should now see (MQS) at the beginning of your terminal prompt. You **must** have the environment active whenever running any code in this repository.
+then run:
 
+1. `source MQS/bin/activate` # (On Windows, use this command instead: MQS\Scripts\activate)
 
-### Step 4: Install Project and Dependencies
+You will know the environment is active when you see (MQS) at the beginning of your terminal prompt. You must ALWAYS have your environment active whenever running any code in here.
+
+#### Step 3: Set Up Environment Variables
+
+The bot requires API keys and database credentials. We manage these using a .env file.
+Ask the exec for the Data & Infra team for this file.
+
+Copy the `.env.example` file or rename to `.env` in the root directory, then update it with your credentials:
+
+1. `cp .env.example .env`(or just rename the file)
+1. Open the `.env` file and fill in the required values (API keys, database credentials, etc.).
+#### Step 4: Install Project and Dependencies
 
 This project uses a pyproject.toml file for setup. The following commands will install the bot as a local package and then install all required third-party libraries.
 
 Install the project in "editable" mode
 
 1. `uv pip install -e .`
-2. `uv pip install --no-cache-dir --only-binary :all: -r requirements.txt`
+1. `uv pip install --no-cache-dir --only-binary :all: -r requirements.txt`
 
 
 ### Step 5: Set Up Environment Variables

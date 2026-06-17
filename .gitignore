@@ -10,6 +10,9 @@
 .python-version
 __pycache__/
 data/
+MQS/
+NLP/fetch_state/
+NLP/finbert-combined-final/
 finber_eval_results/
 local-gpt2-model/
 MQS/
@@ -23,6 +26,14 @@ NLP/daemon.log
 src/backtest/data/
 venv/
 visualise_gpt2.ipynb
+*.pyc
+*.egg-info/
+venv/
+mqs/
+.env
+*.lock
+.vscode/
+src/backtest/data/
 # Jupyter Notebook outputs (keeps diffs clean)
 *.ipynb
 **/.ipynb

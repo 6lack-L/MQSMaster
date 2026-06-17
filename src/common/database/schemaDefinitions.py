@@ -125,6 +125,7 @@ class SchemaDefinitions:
             UNIQUE (portfolio_id, ticker, date, model) -- Ensures one weight per asset, per portfolio, per day, per model
             );
         """
+
         create_news_sentiment_table = """
         CREATE TABLE IF NOT EXISTS news_sentiment (
             id SERIAL PRIMARY KEY,

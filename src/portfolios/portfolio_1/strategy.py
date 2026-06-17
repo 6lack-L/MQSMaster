@@ -2,22 +2,23 @@ import logging
 
 # Try relative imports first; on failure, log and attempt absolute imports.
 try:
+    from portfolios.order_interface import StrategyContext
     from portfolios.portfolio_BASE.strategy import BasePortfolio
-    from portfolios.strategy_api import StrategyContext
 except ImportError as rel_err:
     logging.warning(
-        "Base Portfolio and strategy_api relative import failed; using absolute import. Details: %s",
+        "Base Portfolio and order_interface relative import failed; using absolute import. Details: %s",
         rel_err,
     )
     try:
+        from src.portfolios.order_interface import StrategyContext
         from src.portfolios.portfolio_BASE.strategy import BasePortfolio
-        from src.portfolios.strategy_api import StrategyContext
     except ImportError as abs_err:
         logging.error(
             "Failed to import BasePortfolio and StrategyContext from both relative and absolute paths. Details: %s",
             abs_err,
         )
         raise
+
 
 class VolMomentum(BasePortfolio):
     def __init__(
@@ -27,9 +28,15 @@ class VolMomentum(BasePortfolio):
         debug=False,
         config_dict=None,
         backtest_start_date=None,
+        order_manager=None,
     ):
         super().__init__(
-            db_connector, executor, debug, config_dict, backtest_start_date
+            db_connector,
+            executor,
+            debug,
+            config_dict,
+            backtest_start_date,
+            order_manager,
         )
         self.logger = logging.getLogger(
             f"{self.__class__.__name__}_{self.portfolio_id}"
@@ -78,7 +85,7 @@ class VolMomentum(BasePortfolio):
                 asset_weight = portfolio.get_asset_weight(ticker, asset.Close)
             if asset_weight <= weight:
                 target_weight = True
-            else:
+            elif asset_weight > weight:
                 target_weight = False
 
             if (bullish and target_weight) or position < 0:  # Max 25% weight

@@ -18,5 +18,15 @@
     "TLT": 0.083,
     "GLD": 0.083
   },
-  "DATA_FEEDS": ["MARKET_DATA", "POSITIONS", "CASH_EQUITY", "PORT_NOTIONAL"]
+  "DATA_FEEDS": ["MARKET_DATA", "POSITIONS", "CASH_EQUITY", "PORT_NOTIONAL"],
+  "OMS": {
+        "enabled": true,
+        "default_algo": "VWAP",
+        "duration_minutes": 30,
+        "twap_num_slices": 10,
+        "vwap_bucket_minutes": 15,
+        "vwap_lookback_days": 20,
+        "min_order_notional": 100.0,
+        "fallback_to_market": true
+  }
 }

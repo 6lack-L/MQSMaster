@@ -142,7 +142,7 @@ jobs:
               --include-glob "src/common/auth/*.py" \
               --include-glob "src/orchestrator/marketData/fmpMarketData.py" \
               --include-glob "src/portfolios/indicators/*.py" \
-              --include-glob "src/portfolios/strategy_api.py" \
+              --include-glob "src/portfolios/order_interface.py" \
               --include-glob "src/main_backtest.py"
           else
             echo "::warning::scripts/check_per_file_coverage.py not found; skipping per-file coverage enforcement."

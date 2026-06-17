@@ -17,6 +17,37 @@ The OMS introduces a layer between the strategy's intent ("buy AAPL with 80% con
 
 ---
 
+## 1a. Implementation Status (as of 2026-06-13)
+
+> **Read this before the rest of the document.** Sections 2–10 describe the *target* design. The code on disk implements a partial first slice of it, and diverges from the design in several deliberate ways. This section is the source of truth for what exists today.
+
+**What is built — a config-gated order *tracking* layer (it does not change fills yet):**
+
+- `src/oms/order_structs.py` — `ParentOrder` / `ChildOrder` dataclasses and the `OrderStatus` / `AlgoType` / `Side` / `OrderType` enums (this is the design's `models.py`, renamed).
+- `src/oms/order_manager.py` — `OrderManager` with `process_order(...)` (builds + registers a `ParentOrder`, dedupes by `order_id`, hands it to the scheduler, returns the order), plus `on_child_filled`, `cancel_order`, `get_order`, `list_orders`.
+- `src/oms/scheduler.py` — `Scheduler.schedule_order(...)` **only appends to an in-memory list**; there is no background thread and nothing is executed from it.
+- `src/oms/sizing/base.py` — `BaseAlgorithm` ABC (the design's `algorithms/base.py`). No concrete VWAP/TWAP implementations exist.
+- Config gating: each portfolio `config.json` carries the `OMS` block from §8. When `OMS.enabled` is true the engine builds a **per-portfolio** `OrderManager`; otherwise it stays `None` and the proven direct-execution path runs unchanged.
+
+**Wiring — and where it diverges from §5.8 / §3:**
+
+- **The executor owns sizing, not the OMS.** `process_order` receives an already-sized `total_quantity` and validates it; it does *not* reuse the executor's buying-power/margin logic as §5.2 proposes. Sizing stays in `tradeExecutor.execute_trade` / `BacktestExecutor.execute_trade`.
+- **The entry point is `process_order(...)`, not `submit_order(...)`**, and its signature takes `(portfolio_id, ticker, side, confidence, arrival_price, total_quantity, timestamp, ...)`.
+- **`StrategyContext._trade` still always calls `execute_trade`.** Rather than replacing that call with `submit_order` (as §5.8 shows), the `OrderManager` is **threaded in as an `order_manager` parameter** (`StrategyContext(order_manager=...)` → `execute_trade(order_manager=...)`), and the executor calls `process_order` internally *after* sizing and *before* applying the fill.
+- **`BacktestExecutor` was modified** (§5.8 line 369 claimed it would not be). The two pipelines wire the OMS differently by necessity: **backtest** gives each portfolio its own executor, so the OMS is attached as `executor._order_manager` by `BacktestRunner`; **live** shares one `tradeExecutor` across per-portfolio threads, so attaching a per-portfolio OMS as a mutable attribute would race — it is passed as a call parameter instead. `BacktestExecutor.execute_trade` resolves `order_manager or self._order_manager`, accepting either path.
+- Minor naming drift vs the design: `ParentOrder.signal_type` (not `side`); extra `AlgoType.LIMIT/STOP` and an `OrderType` enum.
+
+**Not built yet (everything below is still aspirational):**
+
+- VWAP / TWAP algorithms — `OrderManager.algorithm` is `None` and `manage_order(...)` is a deliberate no-op; no child orders are generated.
+- The background `AlgoScheduler` thread (§5.6) and the engine lifecycle that would start/stop it (§5.8).
+- DB persistence (§6): the `oms_parent_orders` / `oms_child_orders` tables and `order_tracker.py` do not exist — orders live only in `OrderManager.orders_by_id` in memory.
+- `tradeExecutor.execute_child_order(...)` (§5.8).
+
+**Net effect today:** with `OMS.enabled`, a parent order is recorded for every trade, but fills are still produced by the executor's existing direct path (`update_database` in live, in-memory settlement in backtest). Execution behavior is unchanged. This has been verified end-to-end in backtest and covered by unit tests for the `StrategyContext → executor` threading; the full live pipeline (DB + FMP) has not been run.
+
+---
+
 ## 2. Current Architecture (Before OMS)
 
 ```
@@ -95,7 +126,7 @@ src/
 │   └── engine.py                     # MODIFIED — starts/stops OMS scheduler thread
 │
 ├── portfolios/
-│   └── strategy_api.py              # MODIFIED — StrategyContext routes through OMS
+│   └── order_interface.py              # MODIFIED — StrategyContext routes through OMS
 │
 └── common/
     └── database/
@@ -337,7 +368,7 @@ Writes order lifecycle events to two new database tables (see Section 6). Provid
 
 ### 5.8 Modifications to Existing Files
 
-#### `strategy_api.py` — StrategyContext._trade()
+#### `order_interface.py` — StrategyContext._trade()
 
 Current:
 ```python
@@ -532,5 +563,5 @@ The `OrderManager` can auto-select based on a simple heuristic:
 7. `src/oms/order_manager.py` — Coordinator (ties everything together)
 8. Modify `src/live_trading/executor.py` — Add `execute_child_order()`
 9. Modify `src/live_trading/engine.py` — Wire up OMS lifecycle
-10. Modify `src/portfolios/strategy_api.py` — Route through OMS
+10. Modify `src/portfolios/order_interface.py` — Route through OMS
 11. Update `src/common/database/schemaDefinitions.py` — New tables

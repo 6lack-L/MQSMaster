@@ -23,5 +23,15 @@
     "RELEVANCE_THRESHOLDS": [0.0, 0.2, 0.5, 0.8],
     "BUY_THRESHOLD": 0.005,
     "SELL_THRESHOLD": -0.005
-  }
+  },
+  "OMS": {
+    "enabled": true,
+    "default_algo": "VWAP",
+    "duration_minutes": 30,
+    "twap_num_slices": 10,
+    "vwap_bucket_minutes": 15,
+    "vwap_lookback_days": 20,
+    "min_order_notional": 100.0,
+    "fallback_to_market": true
+    }
 }

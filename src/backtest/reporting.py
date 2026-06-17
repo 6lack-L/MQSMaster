@@ -272,13 +272,13 @@ def _compute_rolling_stats(
     columns_to_analyze: list[str],
     windows_days: list[int] = [30, 90, 180],
     date_col: str = "timestamp",
-) -> dict[str, pd.DataFrame]:
+) -> Dict[str, pd.DataFrame]:
     """
     Computes rolling statistics allowing partial-window estimates
     (min_periods = w // 2), so results begin once at least half of
     the window has data.
     """
-    out: dict[str, pd.DataFrame] = {}
+    out: Dict[str, pd.DataFrame] = {}
     df = df_pct_returns.set_index(date_col)
     for w in windows_days:
         window_str = f"{w}D"
@@ -435,14 +435,14 @@ def _build_csv(df: pd.DataFrame, filename: str, logger: logging.Logger, out_dir:
     try:
         if not df.empty:
             path = os.path.join(out_dir, filename)
-            logger.info(f"saving {filename} to {path}")
+            logger.debug(f"saving {filename} to {path}")
             df.to_csv(path, index=False)
         else:
             logger.warning(f"{filename} is empty; skipping CSV export")
     except Exception as e:
         logger.error(f"Error saving {filename}: {e}", exc_info=True)
 
-# --- Main Reporting Function (CORRECTED) ---
+# --- Main Reporting Function ---
 def generate_backtest_report(
     portfolio: BasePortfolio,
     perf_df: pd.DataFrame,
@@ -582,17 +582,16 @@ def generate_backtest_report(
     except Exception as e:
         logger.error(f"Error in portfolio risk analytics: {e}", exc_info=True)
 
-
+    # concurrently save all reports to CSV
     from concurrent.futures import ThreadPoolExecutor
     try:
-        # Save all reports to CSV
-        logger.info("Preparing to save report CSVs")
         with ThreadPoolExecutor(max_workers=4) as executor:
             futures = []
             for name, df in reports.items():
                 futures.append(executor.submit(_build_csv, df, f"{name}.csv", logger, out_dir))
             for future in futures:
                 future.result()  # Wait for all to complete and catch exceptions
+        logger.info(f"Completed saving reports to CSV in {out_dir}")
     except Exception as e:
         logger.error(f"Error saving reports to CSV: {e}", exc_info=True)
     logger.info("Backtest report generation complete.")
