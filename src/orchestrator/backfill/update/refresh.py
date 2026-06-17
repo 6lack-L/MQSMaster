@@ -145,7 +145,7 @@ def parse_cli_arguments() -> argparse.Namespace:
         "--interval", type=int, default=1, help="Bar interval in minutes (default: 1)"
     )
     parser.add_argument(
-        "--threads", type=int, default=8, help="Number of worker threads (default: 8)"
+        "--threads", type=int, default=4, help="Number of worker threads (default: 4, must be < MQSDBConnector pool maxconn=6)"
     )
     parser.add_argument(
         "--exchange", type=str, default="NYSE", help="Exchange code (default: NYSE)"

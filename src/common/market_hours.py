@@ -8,7 +8,6 @@ plug in ``pandas_market_calendars`` or a similar dependency.
 from __future__ import annotations
 
 from datetime import datetime, time as dtime
-from typing import Optional
 
 import pytz
 
@@ -17,7 +16,7 @@ MARKET_OPEN_TIME: dtime = dtime(9, 30)
 MARKET_CLOSE_TIME: dtime = dtime(16, 0)
 
 
-def is_market_open(now: Optional[datetime] = None) -> bool:
+def is_market_open(now: datetime | None = None) -> bool:
     """Return True when US equities are in the regular cash session.
 
     Treats Sat/Sun as closed. ``now`` may be naive (assumed America/New_York)
@@ -37,7 +36,7 @@ def is_market_open(now: Optional[datetime] = None) -> bool:
     return MARKET_OPEN_TIME <= current.time() <= MARKET_CLOSE_TIME
 
 
-def seconds_until_market_close(now: Optional[datetime] = None) -> int:
+def seconds_until_market_close(now: datetime | None = None) -> int:
     """Return seconds until 16:00 ET today. 0 if already past close."""
     if now is None:
         current = datetime.now(MARKET_TIMEZONE)

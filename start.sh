@@ -129,7 +129,6 @@ market_scripts=(
   "./src/main.py"
   "./src/orchestrator/realTime/realtimeDataIngestor.py"
   "./src/orchestrator/realTime/pnl_script.py"
-  "./src/orchestrator/backfill/update/refresh.py"
   "./src/orchestrator/rbp_runner.py"
 )
 

@@ -47,7 +47,7 @@ Backtest configuration parameters:
 - AVAILABLE_PORTFOLIO_CLASSES: A list of all available portfolio strategy classes that can be used in the backtest.
 - BACKTEST_NUM_BATCHES: An optional integer specifying the number of batches to use for parallel backtest execution. If set to None, the batch count will be automatically determined based on the number of CPU cores and the number of portfolios.
 """
-START_DATE = "2021-01-01"
+START_DATE = "2023-01-01"
 END_DATE = "2026-05-15"
 INITIAL_CAPITAL = 1000000.0
 SLIPPAGE = 0.0  # cost_model authoritative; legacy slippage held at 0
