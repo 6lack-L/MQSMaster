@@ -127,6 +127,7 @@ class BacktestExecutor:
 
     def default_trade_size(
         self,
+        portfolio_id,
         signal_type,
         ticker,
         arrival_price,
@@ -138,7 +139,9 @@ class BacktestExecutor:
     ):
         """Size a trade with the default target-weight model, without filling.
 
-        Single sizing entry point for both the OMS path (which reads
+        ``portfolio_id`` is accepted for signature parity with the live executor
+        (where it keys the RBP overlay); the backtest has no overlay and ignores
+        it. Single sizing entry point for both the OMS path (which reads
         ``.quantity`` to register a parent order) and ``execute_trade`` (which
         also needs ``.desired_notional`` for BUY/SELL direction and
         ``.exec_price`` for the fill). Returns a ``Sizing`` with ``quantity == 0``
@@ -238,6 +241,7 @@ class BacktestExecutor:
         # Size with the shared default model (handles coercion, signal/price
         # validation, equal-weight fallback, and buying-power/cash constraints).
         sizing = self.default_trade_size(
+            portfolio_id=portfolio_id,
             signal_type=signal_type,
             ticker=ticker,
             arrival_price=arrival_price,

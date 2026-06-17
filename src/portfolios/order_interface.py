@@ -100,6 +100,7 @@ class StrategyContext:
             # OMS path: size with the executor's default model, then register the
             # order with the OMS (which owns execution from here).
             sizing = self._executor.default_trade_size(
+                portfolio_id=self._portfolio_config["id"],
                 signal_type=signal_type,
                 ticker=ticker,
                 arrival_price=asset_data.Close,

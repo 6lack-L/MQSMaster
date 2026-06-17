@@ -84,6 +84,7 @@ class tradeExecutor:
 
     def default_trade_size(
         self,
+        portfolio_id,
         signal_type,
         ticker,
         arrival_price,
@@ -100,7 +101,9 @@ class tradeExecutor:
         also needs ``.desired_notional`` for BUY/SELL direction and
         ``.exec_price`` for the fill). Fetches the live price once so
         ``execute_trade`` reuses it rather than re-fetching. Returns a ``Sizing``
-        with ``quantity == 0`` on any no-trade.
+        with ``quantity == 0`` on any no-trade. This is also the single
+        chokepoint for the RBP conviction overlay, so every sizing path (direct
+        fill and OMS) blends confidence identically.
         """
         try:
             cash_val = float(cash)
@@ -116,6 +119,31 @@ class tradeExecutor:
         if signal_type not in ("BUY", "SELL", "HOLD"):
             self.logger.debug("Skip trade: unsupported signal_type=%s", signal_type)
             return Sizing(0, 0.0, 0.0)
+
+        # RBP conviction overlay (single chokepoint for all portfolios and both
+        # the direct-fill and OMS paths). Never propagates errors — a failing
+        # overlay falls back to the raw confidence.
+        if self.rbp_overlay is not None:
+            try:
+                confidence_val = max(
+                    0.0,
+                    min(
+                        1.0,
+                        float(
+                            self.rbp_overlay(
+                                portfolio_id, ticker, signal_type, confidence_val
+                            )
+                        ),
+                    ),
+                )
+            except Exception as exc:
+                self.logger.warning(
+                    "RBP overlay raised unexpectedly for %s/%s: %s",
+                    portfolio_id,
+                    ticker,
+                    exc,
+                )
+
         if signal_type == "HOLD" or confidence_val == 0.0:
             self.logger.debug(
                 "Skip trade: signal=%s confidence=%.2f", signal_type, confidence_val
@@ -201,9 +229,11 @@ class tradeExecutor:
         Sizes the trade with the shared default model and, on a non-zero
         quantity, settles it through the database. Sizing (coercion, signal/price
         validation, buying power, live price fetch) lives in default_trade_size;
-        this method owns only the fill and DB bookkeeping.
+        this method owns only the fill and DB bookkeeping. Confidence blending
+        (RBP overlay) happens inside default_trade_size, the shared chokepoint.
         """
         sizing = self.default_trade_size(
+            portfolio_id=portfolio_id,
             signal_type=signal_type,
             ticker=ticker,
             arrival_price=arrival_price,
