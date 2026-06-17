@@ -30,7 +30,7 @@ try:
         vol_target_scale,
         deflated_sharpe_ratio,
     )
-    from portfolios.strategy_api import StrategyContext
+    from portfolios.order_interface import StrategyContext
 except ImportError:
     from src.portfolios.portfolio_6.strategy import Portfolio6Strategy
     from src.portfolios.portfolio_6.screener import (
@@ -40,7 +40,7 @@ except ImportError:
         vol_target_scale,
         deflated_sharpe_ratio,
     )
-    from src.portfolios.strategy_api import StrategyContext
+    from src.portfolios.order_interface import StrategyContext
 
 
 class Portfolio8Strategy(Portfolio6Strategy):

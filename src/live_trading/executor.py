@@ -1,6 +1,7 @@
 import logging
 import math
 from collections import namedtuple
+from typing import Callable, Optional
 
 import pandas as pd
 

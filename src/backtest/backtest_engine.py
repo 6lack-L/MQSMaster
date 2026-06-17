@@ -696,6 +696,7 @@ class BacktestEngine:
                         end_date=self.end_date,
                         initial_capital=self.initial_capital,
                         slippage=self.slippage,
+                        cost_model=self.cost_model,
                         order_manager=order_manager,
                     )
                     trade_log = runner.run()

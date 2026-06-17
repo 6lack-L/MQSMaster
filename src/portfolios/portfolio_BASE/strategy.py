@@ -5,7 +5,7 @@ import logging
 import re
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 
 import pandas as pd
 

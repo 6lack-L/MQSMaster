@@ -33,10 +33,10 @@ import pandas as pd
 
 try:
     from portfolios.portfolio_6.strategy import Portfolio6Strategy
-    from portfolios.strategy_api import StrategyContext
+    from portfolios.order_interface import StrategyContext
 except ImportError:
     from src.portfolios.portfolio_6.strategy import Portfolio6Strategy
-    from src.portfolios.strategy_api import StrategyContext
+    from src.portfolios.order_interface import StrategyContext
 
 
 class Portfolio7Strategy(Portfolio6Strategy):

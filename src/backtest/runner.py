@@ -30,6 +30,7 @@ class BacktestRunner:
         end_date: str | datetime | pd.Timestamp | None = None,
         initial_capital: float = 100000.0,
         slippage: float = 0.0,
+        cost_model: Any = None,
         order_manager=None,
     ):
         """

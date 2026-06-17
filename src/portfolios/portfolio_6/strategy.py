@@ -28,10 +28,10 @@ import pandas as pd
 
 try:
     from portfolios.portfolio_BASE.strategy import BasePortfolio
-    from portfolios.strategy_api import StrategyContext
+    from portfolios.order_interface import StrategyContext
 except ImportError:
     from src.portfolios.portfolio_BASE.strategy import BasePortfolio
-    from src.portfolios.strategy_api import StrategyContext
+    from src.portfolios.order_interface import StrategyContext
 
 try:
     from src.portfolios.portfolio_6.screener import (

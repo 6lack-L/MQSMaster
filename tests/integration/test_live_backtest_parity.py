@@ -34,7 +34,7 @@ import sys
 sys.path.insert(0, str(REPO_ROOT))
 
 from src.portfolios.portfolio_6.strategy import Portfolio6Strategy  # noqa: E402
-from src.portfolios.strategy_api import StrategyContext  # noqa: E402
+from src.portfolios.order_interface import StrategyContext  # noqa: E402
 
 
 @pytest.fixture(autouse=True, scope="module")
