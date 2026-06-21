@@ -8,7 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # --- !! ACTION REQUIRED !! ---
 # Define the absolute path to the Python executable in your virtual environment.
 # Defaults to the Docker image venv path and can be overridden via PYTHON_VENV.
-PYTHON_VENV="$(pwd)/MQS/bin/python"
+PYTHON_VENV="${PYTHON_VENV:-${SCRIPT_DIR}/MQS/bin/python}"
 
 # Load environment variables (like FMP_API_KEY) from the .env file.
 # The .env file should be in the same directory as this script.
