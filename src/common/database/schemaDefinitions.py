@@ -172,5 +172,5 @@ class SchemaDefinitions:
         for stmt in statements:
             result = self.db.execute_query(stmt)
             if result["status"] == "error":
-                print("Error creating table:", result["message"])
+                pass  #continue with the next statement logging happens within the execute_query method
         print("All tables created or confirmed to exist.")
