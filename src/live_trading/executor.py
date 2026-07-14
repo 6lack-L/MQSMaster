@@ -1,9 +1,11 @@
 import logging
 import math
 from collections import namedtuple
+from datetime import datetime
 from typing import Callable, Optional
 
 import pandas as pd
+import pytz
 
 # Result of the default sizing model: share quantity, the signed desired notional
 # (its sign drives BUY vs SELL settlement), and the execution price fetched.
@@ -298,6 +300,117 @@ class tradeExecutor:
             timestamp,
             port_notional_val,
         )
+
+    def execute_child_order(
+        self,
+        child_order,
+        cash,
+        positions,  # DataFrame, same shape as execute_trade's
+        port_notional,
+        timestamp=None,
+    ):
+        """Settle one pre-sized OMS child order against FRESH portfolio state.
+
+        The OMS execution seam (``OrderManager.manage_order`` calls this via
+        its ``execute_child`` callable). Two rules are load-bearing:
+
+        * **No re-sizing.** The parent was sized through
+          ``default_trade_size`` (buying power, cash, RBP overlay) when it
+          was created; this method fills the slice's fixed
+          ``target_quantity``. Re-sizing here would double-apply confidence
+          and make the worked schedule unpredictable.
+        * **State must be fetched at fill time by the caller** (cash /
+          positions / port_notional arguments) — typically via the
+          portfolio's ``ATOMIC_STATE_QUERY`` right before this call. Never
+          pass state captured when the order was submitted: slices execute
+          minutes later, other fills move the books in between, and a stale
+          snapshot writes wrong absolute cash/position values to the DB.
+
+        Returns the OMS fill contract
+        ``{"status": "success", "filled_quantity": ..., "fill_price": ...}``
+        on success, or an ``{"status": "error", ...}`` dict / ``None``-ish
+        result that ``manage_order`` routes to retry-then-cancel.
+        """
+        ticker = child_order.ticker
+        signal_type = child_order.signal_type.value
+        quantity_to_trade = float(child_order.target_quantity)
+        if quantity_to_trade <= 0:
+            return {
+                "status": "error",
+                "message": f"invalid child quantity {quantity_to_trade}",
+            }
+
+        try:
+            cash_val = float(cash)
+            port_notional_val = float(port_notional)
+        except (ValueError, TypeError) as e:
+            self.logger.error(f"Numeric conversion failed in execute_child_order: {e}")
+            return {"status": "error", "message": str(e)}
+
+        exec_price = self.get_current_price(ticker)
+        if exec_price <= 0:
+            self.logger.error(
+                f"Could not fetch valid execution price for {ticker}; "
+                f"child {child_order.child_id} not filled."
+            )
+            return {"status": "error", "message": f"no price for {ticker}"}
+
+        # Slippage is measured against the parent's decision price so the
+        # trade log shows per-slice implementation shortfall.
+        arrival_price = float(child_order.arrival_price) or exec_price
+        slippage_bps = (
+            ((exec_price / arrival_price) - 1) * 10000 if arrival_price > 0 else 0.0
+        )
+
+        current_pos_row = positions[positions["ticker"] == ticker]
+        current_quantity = (
+            float(current_pos_row["quantity"].iloc[0])
+            if not current_pos_row.empty
+            else 0.0
+        )
+
+        # Settlement mirrors execute_trade; direction comes from the child's
+        # explicit side, which the OMS derived from the SIGN of the sized
+        # notional at parent creation (the same rule execute_trade applies —
+        # see CLAUDE.md "Trade direction").
+        trade_value = quantity_to_trade * exec_price
+        if signal_type == "BUY":
+            updated_cash = cash_val - trade_value
+            updated_quantity = current_quantity + quantity_to_trade
+            port_notional_val = port_notional_val - trade_value
+        else:  # SELL
+            updated_cash = cash_val + trade_value
+            updated_quantity = current_quantity - quantity_to_trade
+            port_notional_val = port_notional_val + trade_value
+
+        if timestamp is None:
+            # Repo convention: all timestamps in America/New_York (a UTC
+            # fill written near midnight ET would land on the wrong
+            # trading date in cash_equity_book).
+            timestamp = datetime.now(pytz.timezone("America/New_York"))
+
+        result = self.update_database(
+            child_order.portfolio_id,
+            ticker,
+            signal_type,
+            quantity_to_trade,
+            updated_cash,
+            updated_quantity,
+            arrival_price,
+            exec_price,
+            slippage_bps,
+            timestamp,
+            port_notional_val,
+        )
+        if not isinstance(result, dict) or result.get("status") != "success":
+            # DB transaction rolled back: nothing settled, let the OMS retry.
+            return result if isinstance(result, dict) else {"status": "error"}
+
+        return {
+            "status": "success",
+            "filled_quantity": quantity_to_trade,
+            "fill_price": exec_price,
+        }
 
     def update_database(
         self,
