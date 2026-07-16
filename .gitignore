@@ -22,7 +22,8 @@ NLP/sentiment_scores/
 NLP/fetch_state/
 NLP/finbert-combined-final/
 NLP/finbert-finetuned-final/
-NLP/daemon.log
+NLP/daemon.log*
+logs/
 src/backtest/data/
 venv/
 visualise_gpt2.ipynb

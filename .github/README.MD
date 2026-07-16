@@ -135,7 +135,7 @@ The fine-tuned FinBERT model is **not** in the repo. If you plan to run any of t
 2. Place the folder so the final path is:
 
    ```
-   NLP/finbert-finetuned-final/
+   NLP/finbert-combined-final/
    ```
 
 3. Confirm it contains the model weights, tokenizer, and `config.json`.

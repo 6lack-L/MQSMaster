@@ -242,12 +242,12 @@ class MQSDBConnector:
                 values = [[row[col] for col in columns] for row in data]
 
                 psycopg2.extras.execute_values(cursor, sql, values)
-                inserted_count = cursor.rowcount
+                inserted_count = cursor.rowcount - len(conflict_columns)  # Adjust for ignored rows due to conflicts
                 conn.commit()
 
                 return {
                     "status": "success",
-                    "message": f"Successfully inserted or ignored {inserted_count} rows.",
+                    "message": f"Successfully inserted {inserted_count} and ignored {len(conflict_columns)} rows.",
                 }
 
         except Exception as e:

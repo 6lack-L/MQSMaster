@@ -4,6 +4,7 @@ from NLP.core.logging_config import get_logger
 from NLP.core.paths import (
     ARTICLES_DIR,
     DAEMON_LOG_FILE,
+    LOGS_DIR,
     MODEL_DIR,
     NLP_DIR,
     PROJECT_ROOT,
@@ -20,6 +21,7 @@ from NLP.core.timestamps import (
 __all__ = [
     "ARTICLES_DIR",
     "DAEMON_LOG_FILE",
+    "LOGS_DIR",
     "MODEL_DIR",
     "NLP_DIR",
     "PROJECT_ROOT",

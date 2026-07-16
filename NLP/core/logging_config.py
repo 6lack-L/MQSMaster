@@ -39,6 +39,7 @@ def configure_rotating_file_logger(
     Used by the long-running daemon. Replacing handlers is intentional so
     repeated calls remain idempotent.
     """
+    log_file.parent.mkdir(parents=True, exist_ok=True)
     handler = RotatingFileHandler(log_file, maxBytes=max_bytes, backupCount=backup_count)
     handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
 

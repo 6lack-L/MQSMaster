@@ -32,7 +32,7 @@ from _fmp_helpers import FMPClient  # noqa: E402
 
 
 DEFAULT_UNIVERSE_PATH = REPO_ROOT / "src" / "portfolios" / "portfolio_6" / "universe.json"
-DEFAULT_OUTPUT_PATH = REPO_ROOT / "fundamentals" / "fundamentals.csv"
+DEFAULT_OUTPUT_PATH = REPO_ROOT / "fundamentals" / "fundamentals.csv"#todo: make this configurable via env var or config file
 FIELDNAMES = [
     "ticker",
     "roe",

@@ -21,15 +21,17 @@ graph TD
         EXEC -->|"trade log + fills"| DB
     end
 
-    BROKER -.->|"next schedule tick"| FMP
+    SCHED([Scheduler<br/>poll interval]) -.->|"next schedule tick"| FMP
 
     classDef api fill:#22d3ee,stroke:#0e7490,color:#0f172a;
+    classDef sched fill:#94a3b8,stroke:#475569,color:#0f172a;
     classDef db fill:#fbbf24,stroke:#b45309,color:#0f172a;
     classDef strat fill:#a78bfa,stroke:#6d28d9,color:#0f172a;
     classDef exec fill:#f87171,stroke:#b91c1c,color:#ffffff;
     classDef signal fill:#34d399,stroke:#047857,color:#0f172a;
 
     class FMP,BROKER api;
+    class SCHED sched;
     class DB db;
     class STRAT,FETCH strat;
     class SIG signal;

@@ -8,11 +8,11 @@ The NLP pipeline requires the fine-tuned FinBERT model. It is **not** committed 
    <https://drive.google.com/drive/folders/1v7NjSuyFq4CTIctrw1bSv13JzkkMg1l8?usp=sharing>
 2. Place the downloaded folder inside `NLP/` so the final path is:
    ```
-   NLP/finbert-finetuned-final/
+   NLP/finbert-combined-final/
    ```
 3. Confirm the directory contains the model weights, tokenizer, and config files (e.g. `config.json`, `tokenizer.json`, `model.safetensors` or equivalent).
 
-The default model path is resolved by `NLP/sentiment/scorer.py` (re-exported from `NLP/sentiment_processor.py`) as `NLP/finbert-finetuned-final`. **There is no HuggingFace fallback**: if the directory is missing the scorer raises `FileNotFoundError` at startup with a pointer back to this README. The previous fallback (`ProsusAI/finbert`) used a different label ordering (positive=0, negative=1, neutral=2 vs. our fine-tuned positive=0, neutral=1, negative=2) and would have produced silently incorrect scores.
+The default model path is resolved by `NLP/sentiment/scorer.py` (re-exported from `NLP/sentiment_processor.py`) as `NLP/finbert-combined-final`. **There is no HuggingFace fallback**: if the directory is missing the scorer raises `FileNotFoundError` at startup with a pointer back to this README. The previous fallback (`ProsusAI/finbert`) used a different label ordering (positive=0, negative=1, neutral=2 vs. our fine-tuned positive=0, neutral=1, negative=2) and would have produced silently incorrect scores.
 
 ## Quick Commands
 
@@ -123,7 +123,7 @@ NLP/
 ├── articles/                  # per-ticker article CSVs (gitignored)
 ├── sentiment_scores/          # per-ticker score CSVs (gitignored)
 ├── fetch_state/               # FMP paged-fetch cursors (gitignored)
-└── finbert-finetuned-final/   # downloaded model directory (gitignored)
+└── finbert-combined-final/   # downloaded model directory (gitignored)
 ```
 
 Related shared modules:

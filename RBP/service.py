@@ -98,9 +98,7 @@ class RBPForecastService:
 
         engineered = self._load_and_engineer(tickers, asof)
         if engineered.empty:
-            logger.warning(
-                "RBPForecastService.refresh: no engineered rows available."
-            )
+            logger.warning("RBPForecastService.refresh: no engineered rows available.")
             return 0
 
         rows: List[dict] = []
@@ -138,9 +136,7 @@ class RBPForecastService:
 
     # ---------------------------------------------------------------- helpers
 
-    def _load_and_engineer(
-        self, tickers: List[str], asof: datetime
-    ) -> pd.DataFrame:
+    def _load_and_engineer(self, tickers: List[str], asof: datetime) -> pd.DataFrame:
         end = pd.to_datetime(asof).tz_localize(None)
         start = end - timedelta(days=self.config.lookback_days)
         market_data = self.loader.load(tickers, start, end)
@@ -213,8 +209,7 @@ class RBPForecastService:
         y_train = train_df[self.config.target_column].copy()
         self._train_cache[ticker] = (x_train, y_train, latest_date)
         logger.debug(
-            "RBPForecastService: rebuilt training matrix for %s "
-            "(%d rows, latest=%s).",
+            "RBPForecastService: rebuilt training matrix for %s (%d rows, latest=%s).",
             ticker,
             len(x_train),
             latest_date,
@@ -247,7 +242,7 @@ class RBPForecastService:
             )
             return 0
 
-        # bulk_inject_to_db's message is "Successfully inserted or ignored N rows."
+        # bulk_inject_to_db's message is "Successfully inserted (rowcount - len(conflict_columns)) rows and ignored (len(conflict_columns)) rows."
         # That count reflects affected rows after ON CONFLICT DO NOTHING; we
         # surface the constructed row count as the caller's "attempted" total
         # and treat any non-error status as a successful upsert of len(rows).
