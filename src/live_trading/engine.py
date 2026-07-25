@@ -6,7 +6,10 @@ import logging
 import os
 import threading
 import time
+from datetime import datetime
 from typing import List
+
+import pytz
 
 try:
     from portfolios.portfolio_BASE.strategy import BasePortfolio
@@ -29,7 +32,14 @@ class RunEngine:
     Updated to dynamically load configurations for each portfolio.
     """
 
-    def __init__(self, db_connector, executor, debug=False, max_consecutive_failures=5):
+    def __init__(
+        self,
+        db_connector,
+        executor,
+        debug=False,
+        max_consecutive_failures=5,
+        oms_tick_seconds: float = 5.0,
+    ):
         self.logger = logging.getLogger(self.__class__.__name__)
         self.db_connector = db_connector
         self.executor = executor
@@ -39,6 +49,14 @@ class RunEngine:
 
         self.max_consecutive_failures = max_consecutive_failures
         self.failure_counts = {}
+
+        # OMS pump cadence. Slice timing must be finer than the portfolio
+        # poll interval (a 3-minute TWAP slice cannot wait for an hourly
+        # poll), so a single dedicated thread pumps every OMS-enabled
+        # portfolio's OrderManager on this tick. The Event gives run() a
+        # prompt shutdown handle (vs sleeping out a full tick).
+        self.oms_tick_seconds = max(0.5, float(oms_tick_seconds))
+        self._oms_stop_event = threading.Event()
 
     def load_portfolios(self, portfolio_classes: List[type[BasePortfolio]]):
         """
@@ -142,6 +160,105 @@ class RunEngine:
 
         self.logger.info(f"Stopped run loop for portfolio {portfolio_id}.")
 
+    # ------------------------------------------------------------------
+    # OMS pump (live counterpart of the backtest runner's per-bar pump)
+    # ------------------------------------------------------------------
+
+    def _oms_portfolios(self) -> List[BasePortfolio]:
+        return [
+            p for p in self.portfolios if getattr(p, "order_manager", None) is not None
+        ]
+
+    def _make_child_executor(self, portfolio: BasePortfolio):
+        """Build the execute_child callable for one portfolio.
+
+        Load-bearing detail: portfolio state (cash/positions/notional) is
+        fetched FRESH inside every call — via the portfolio's atomic state
+        query — never captured when the order was submitted. A slice can
+        execute minutes after submission, and other fills move the books in
+        between; settling against stale state writes wrong absolute values
+        to cash_equity_book/positions_book.
+
+        The per-portfolio OrderManager stays a call-scoped value throughout
+        (closure -> manage_order parameter); nothing is ever attached to the
+        shared tradeExecutor (see CLAUDE.md "OMS" on why that would race
+        across portfolio threads).
+        """
+
+        def _execute(child_order):
+            data = portfolio.get_data(["POSITIONS", "CASH_EQUITY", "PORT_NOTIONAL"])
+            cash_df = data.get("CASH_EQUITY")
+            positions_df = data.get("POSITIONS")
+            port_df = data.get("PORT_NOTIONAL")
+            if (
+                cash_df is None
+                or cash_df.empty
+                or positions_df is None
+                or positions_df.empty
+                or port_df is None
+                or port_df.empty
+            ):
+                # Books unreadable right now: report failure so the OMS
+                # retries rather than settling against unknown state.
+                return {
+                    "status": "error",
+                    "message": "could not fetch fresh portfolio state",
+                }
+            return self.executor.execute_child_order(
+                child_order,
+                cash=cash_df.iloc[0]["notional"],
+                positions=positions_df,
+                port_notional=port_df.iloc[0]["notional"],
+            )
+
+        return _execute
+
+    def _run_oms_pump(self):
+        """Dedicated OMS thread: tick every ``oms_tick_seconds``, pump each
+        OMS-enabled portfolio's OrderManager, and on shutdown cancel whatever
+        is still queued so the session ends with every order terminal."""
+        ny_tz = pytz.timezone("America/New_York")
+        self.logger.info(
+            "OMS pump started (tick=%.1fs, portfolios=%d).",
+            self.oms_tick_seconds,
+            len(self._oms_portfolios()),
+        )
+        while self.running and not self._oms_stop_event.is_set():
+            for portfolio in self._oms_portfolios():
+                try:
+                    portfolio.order_manager.manage_order(
+                        now=datetime.now(ny_tz),
+                        execute_child=self._make_child_executor(portfolio),
+                    )
+                except Exception as e:
+                    # One portfolio's OMS failure must not starve the others;
+                    # the next tick retries naturally.
+                    self.logger.exception(
+                        f"OMS pump failed for portfolio "
+                        f"{portfolio.portfolio_id}: {e}"
+                    )
+            self._oms_stop_event.wait(timeout=self.oms_tick_seconds)
+
+        # Drain on shutdown: cancel open parents (and their queued slices)
+        # so tracking logs end the session with terminal states only.
+        for portfolio in self._oms_portfolios():
+            try:
+                cancelled = portfolio.order_manager.cancel_all_open_orders(
+                    reason="engine shutdown"
+                )
+                if cancelled:
+                    self.logger.info(
+                        "Cancelled %d open OMS orders for portfolio %s on shutdown.",
+                        cancelled,
+                        portfolio.portfolio_id,
+                    )
+            except Exception as e:
+                self.logger.exception(
+                    f"OMS shutdown drain failed for portfolio "
+                    f"{portfolio.portfolio_id}: {e}"
+                )
+        self.logger.info("OMS pump stopped.")
+
     def run(self):
         """
         Starts the trading engine, running all loaded portfolios in separate threads.
@@ -156,6 +273,15 @@ class RunEngine:
             thread = threading.Thread(target=self._run_portfolio, args=(portfolio,))
             threads.append(thread)
             thread.start()
+
+        # One pump thread serves all OMS-enabled portfolios (daemon so a
+        # hung DB call cannot block process exit; the drain is best-effort).
+        oms_thread = None
+        if self._oms_portfolios():
+            oms_thread = threading.Thread(
+                target=self._run_oms_pump, name="oms-pump", daemon=True
+            )
+            oms_thread.start()
 
         try:
             while self.running:
@@ -173,6 +299,12 @@ class RunEngine:
 
         for thread in threads:
             thread.join()
+
+        if oms_thread is not None:
+            # Wake the pump immediately (skip the remaining tick wait), let
+            # it run its shutdown drain, then bound the wait.
+            self._oms_stop_event.set()
+            oms_thread.join(timeout=30)
 
         self.logger.info(
             "All portfolio threads have been joined. RunEngine shutdown complete."

@@ -291,6 +291,86 @@ class BacktestExecutor:
             "updated_quantity": self.positions.get(ticker, 0.0),
         }
 
+    def execute_child_order(self, child_order, timestamp=None):
+        """Settle one pre-sized OMS child order into the unified portfolio.
+
+        The OMS execution seam (``OrderManager.manage_order`` calls this via
+        its ``execute_child`` callable). Deliberately does NOT re-size: the
+        parent was sized through ``default_trade_size`` (buying power, cash,
+        RBP-blended confidence) when it was created; this method only fills
+        the slice's fixed ``target_quantity`` at the *current* simulated
+        price. Margin drift between parent sizing and slice fill is accepted
+        v1 behavior — mirroring live, where a worked order can also drift
+        from its decision-time constraints.
+
+        Args:
+            child_order: ``src.oms.order_structs.ChildOrder`` (duck-typed:
+                needs ticker / signal_type / target_quantity / arrival_price
+                / confidence / portfolio_id).
+            timestamp: simulated time of the fill (the runner passes the
+                event-loop timestamp so trade-log ordering matches sim time).
+
+        Returns the OMS fill contract on success —
+        ``{"status": "success", "filled_quantity": ..., "fill_price": ...}``
+        — or an ``{"status": "error", ...}`` dict, which ``manage_order``
+        routes to its retry-then-cancel path.
+        """
+        ticker = child_order.ticker
+        signal_type = child_order.signal_type.value
+        quantity = float(child_order.target_quantity)
+        if quantity <= 0:
+            return {"status": "error", "message": f"invalid quantity {quantity}"}
+
+        price = self.latest_prices.get(ticker, 0.0)
+        if price <= 0:
+            # No price yet for this ticker at this point in the sim: report
+            # failure so the OMS retries on a later bar rather than filling
+            # at a bogus price.
+            self.logger.warning(
+                "No valid simulated price for %s; child %s not filled.",
+                ticker,
+                child_order.child_id,
+            )
+            return {"status": "error", "message": f"no price for {ticker}"}
+
+        # Per-slice cost: each child pays impact on its own (smaller)
+        # notional — this is exactly the benefit slicing is meant to show
+        # under the sqrt-impact cost model.
+        exec_price = self._apply_slippage(
+            price, signal_type, ticker=ticker, trade_notional=quantity * price
+        )
+
+        trade_value = quantity * exec_price
+        current_quantity = self.positions.get(ticker, 0.0)
+        if signal_type == "BUY":
+            self.cash -= trade_value
+            self.positions[ticker] = current_quantity + quantity
+        else:  # SELL
+            self.cash += trade_value
+            self.positions[ticker] = current_quantity - quantity
+
+        # Same record shape as execute_trade so reporting treats OMS fills
+        # identically; confidence is the parent's registered value.
+        self.trade_log.append(
+            {
+                "timestamp": timestamp,
+                "portfolio_id": child_order.portfolio_id,
+                "ticker": ticker,
+                "signal_type": signal_type,
+                "confidence": float(child_order.confidence),
+                "shares": quantity,
+                "fill_price": exec_price,
+                "cash_after": self.cash,
+                "position_size": self.positions.get(ticker, 0.0),
+            }
+        )
+
+        return {
+            "status": "success",
+            "filled_quantity": quantity,
+            "fill_price": exec_price,
+        }
+
     def dump_trade_log(self) -> list[str]:
         """
         Generate formatted trade log entries and return them as a list of strings.

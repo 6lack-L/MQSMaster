@@ -111,11 +111,17 @@ class StrategyContext:
                 ticker_weight=self.Portfolio.get_asset_weight(ticker, asset_data.Close),
             )
             if sizing.quantity > 0:
+                # Direction comes from the SIGN of the sized notional, not
+                # the raw signal — identical to execute_trade's settlement
+                # rule (see CLAUDE.md "Trade direction"). A BUY signal on an
+                # over-weighted position sizes negative and must be worked
+                # as a SELL (trim), and vice versa.
+                execution_side = "SELL" if sizing.desired_notional < 0 else "BUY"
                 try:
                     self._order_manager.process_order(
                         portfolio_id=self._portfolio_config["id"],
                         ticker=ticker,
-                        side=signal_type,
+                        side=execution_side,
                         confidence=confidence,
                         arrival_price=asset_data.Close,
                         total_quantity=sizing.quantity,

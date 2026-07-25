@@ -190,10 +190,6 @@ class BacktestRunner:
         )
 
         for current_timestamp in progress_bar:  # <-- Iterate over filtered timestamps
-            if last_poll_time and (current_timestamp - last_poll_time) < poll_td:
-                continue
-            last_poll_time = current_timestamp
-
             # Get the data chunk for this timestamp from the *full* group
             try:
                 current_data_chunk = data_groups.get_group(current_timestamp)
@@ -206,6 +202,30 @@ class BacktestRunner:
             for ticker, price in price_updates.items():
                 if pd.notna(price):
                     self.executor.update_price(ticker, float(price))
+
+            # Pump the OMS at EVERY bar, before the strategy poll gate, so
+            # sliced schedules (TWAP/VWAP children) fill at intermediate bars
+            # instead of bunching at the next poll — this is the backtest
+            # counterpart of the live engine's OMS tick thread. Prices were
+            # just updated above, and strategy calls / perf records stay
+            # behind the poll gate, so non-OMS runs are unaffected.
+            if self.order_manager is not None:
+                try:
+                    pump_time = current_timestamp.to_pydatetime()
+                    self.order_manager.manage_order(
+                        now=pump_time,
+                        execute_child=lambda child, _ts=pump_time: (
+                            self.executor.execute_child_order(child, timestamp=_ts)
+                        ),
+                    )
+                except Exception as e:
+                    self.logger.exception(
+                        f"OMS pump failed at {current_timestamp}: {e}", exc_info=True
+                    )
+
+            if last_poll_time and (current_timestamp - last_poll_time) < poll_td:
+                continue
+            last_poll_time = current_timestamp
 
             # This logic now works perfectly:
             # current_timestamp is (e.g.) `2025-01-02 04:30:00`
