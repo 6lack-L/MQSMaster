@@ -36,6 +36,17 @@ mkdir -p "$PERSISTENT_LOG_DIR"
 # Delay (seconds) between a persistent script crashing and the watcher restarting it.
 PERSISTENT_RESTART_DELAY=30
 
+# Seconds to wait after launching a market script before deciding it started
+# cleanly. Import errors and credential failures surface well inside this.
+MARKET_START_GRACE=${MARKET_START_GRACE:-3}
+
+# How many consecutive "market status unknown" checks to tolerate before
+# shutting the session down anyway. At the 3-minute poll interval, 20 is about
+# an hour of FMP being unreachable. Set high enough that a transient outage
+# does not end the trading day, low enough that processes cannot run forever
+# against a permanently broken check.
+UNKNOWN_STATUS_MAX_STREAK=${UNKNOWN_STATUS_MAX_STREAK:-20}
+
 # --- PRE-FLIGHT CHECKS ---
 
 # Check if required commands are installed
@@ -56,23 +67,149 @@ fi
 # --- FUNCTION DEFINITIONS ---
 
 # Function to check if the market is open using the Financial Modeling Prep API.
+# Report whether the exchange is currently open.
+#
+# Three distinct outcomes, because conflating them is dangerous:
+#   0 -> open
+#   1 -> confirmed closed        (caller shuts the session down)
+#   2 -> could not determine     (caller keeps running and retries)
+#
+# The previous version returned "closed" for API errors too, so an outage, an
+# expired key, or a changed response shape silently ended the trading day.
+#
+# Shape-agnostic on purpose: FMP has served this payload both as a bare object
+# and as a single-element array. Indexing with .[0] against an object makes jq
+# fail with "Cannot index object with number", which the old code counted as
+# "closed" -- meaning the check could never return true.
 is_market_open() {
   local response
-  response=$(curl -s "https://financialmodelingprep.com/stable/exchange-market-hours?exchange=${EXCHANGE}&apikey=${FMP_API_KEY}")
+  response=$(curl -s --max-time 15 "https://financialmodelingprep.com/stable/exchange-market-hours?exchange=${EXCHANGE}&apikey=${FMP_API_KEY}")
 
   if [ -z "$response" ]; then
-    echo "[WARNING] No response from API (check network or API key). Assuming market is closed."
-    return 1 # Return "failure" (market closed)
+    echo "[WARNING] No response from FMP (network or timeout). Market status UNKNOWN."
+    return 2
   fi
 
-  # Check if the response contains 'isMarketOpen' before passing to jq
-  if ! echo "$response" | jq -e '.[0] | has("isMarketOpen")' > /dev/null; then
-     echo "[WARNING] API response did not contain market status. Assuming market is closed."
-     echo "API Response: $response"
-     return 1 # Return "failure"
+  if ! echo "$response" | jq -e . > /dev/null 2>&1; then
+    echo "[WARNING] FMP response is not valid JSON. Market status UNKNOWN."
+    echo "  Response: ${response:0:200}"
+    return 2
   fi
 
-  echo "$response" | jq -e '.[0].isMarketOpen' > /dev/null
+  # FMP signals auth and quota problems as an object with an error key, which
+  # would otherwise look like a malformed status payload.
+  if echo "$response" | jq -e 'type == "object" and (has("Error Message") or has("error") or has("message"))' > /dev/null 2>&1; then
+    echo "[WARNING] FMP returned an error (check FMP_API_KEY / quota). Market status UNKNOWN."
+    echo "  Response: ${response:0:200}"
+    return 2
+  fi
+
+  # Normalise array-or-object to a single object.
+  local normalized
+  normalized=$(echo "$response" | jq -c 'if type == "array" then .[0] else . end' 2>/dev/null)
+
+  # Presence must be tested with has(), NOT `.isMarketOpen // empty`: jq's `//`
+  # treats `false` as empty, so a genuinely closed market would be misreported
+  # as UNKNOWN and the session would be kept alive past the close.
+  if ! echo "$normalized" | jq -e 'type == "object" and has("isMarketOpen")' > /dev/null 2>&1; then
+    echo "[WARNING] FMP response has no isMarketOpen field. Market status UNKNOWN."
+    echo "  Response: ${response:0:200}"
+    return 2
+  fi
+
+  local status
+  status=$(echo "$normalized" | jq -r '.isMarketOpen')
+  case "$status" in
+    true)  return 0 ;;
+    false) return 1 ;;
+    *)
+      echo "[WARNING] FMP isMarketOpen has unexpected value '$status'. Market status UNKNOWN."
+      echo "  Response: ${response:0:200}"
+      return 2
+      ;;
+  esac
+}
+
+# Names of scripts that never made it into the run list, and why. Reported in
+# the startup summary so a missing or broken script is visible in the logs
+# rather than silently absent.
+declare -a SKIPPED_SCRIPTS=()
+declare -a FAILED_SCRIPTS=()
+
+# Decide whether a single script is fit to run.
+#
+# Each script is judged on its own. A script that fails here is recorded and
+# skipped; every other script still starts. This is deliberate: these are
+# independent workloads (data ingestion, PnL, RBP forecasting) and losing one
+# is not a reason to lose the rest.
+#
+# Checks, cheapest first:
+#   1. the file exists           -- catches .dockerignore omissions and typos
+#   2. it parses                 -- catches syntax errors without executing it
+#
+# Import errors are NOT caught here: resolving them would mean executing
+# module-level code, which for these scripts means opening DB connections and
+# API sessions. Those surface at launch instead, handled by launch_market_script.
+validate_script() {
+  local script="$1"
+
+  if [ ! -f "$script" ]; then
+    echo "  [SKIP] '$script' -- file not found."
+    echo "         If this ran locally but not in a container, check .dockerignore:"
+    echo "         excluded directories are absent from the image."
+    SKIPPED_SCRIPTS+=("$script (not found)")
+    return 1
+  fi
+
+  if [ ! -r "$script" ]; then
+    echo "  [SKIP] '$script' -- not readable (permissions)."
+    SKIPPED_SCRIPTS+=("$script (unreadable)")
+    return 1
+  fi
+
+  # py_compile parses and byte-compiles without importing, so no module-level
+  # side effects. -q keeps normal runs quiet.
+  local compile_err
+  if ! compile_err=$("$PYTHON_VENV" -m py_compile "$script" 2>&1); then
+    echo "  [SKIP] '$script' -- does not compile:"
+    echo "$compile_err" | sed 's/^/         /'
+    SKIPPED_SCRIPTS+=("$script (syntax error)")
+    return 1
+  fi
+
+  return 0
+}
+
+# Launch one market-hours script and confirm it survives startup.
+#
+# Records the PID on success. On early exit, logs the failure and returns
+# non-zero WITHOUT touching any other process -- the caller keeps going. The
+# script's own traceback has already gone to stdout (and so to CloudWatch),
+# which is where the cause will be.
+launch_market_script() {
+  local script="$1"
+
+  "$PYTHON_VENV" "$script" &
+  local pid=$!
+
+  # Grace period for the interpreter to reach steady state. Import errors and
+  # bad credentials surface well inside this window.
+  sleep "$MARKET_START_GRACE"
+
+  if ps -p "$pid" > /dev/null 2>&1; then
+    echo "  [OK]   '$script' running (PID: $pid)"
+    market_pids+=("$pid")
+    return 0
+  fi
+
+  # Reap it so the exit status is accurate rather than "no such process".
+  local ec
+  wait "$pid" 2>/dev/null
+  ec=$?
+  echo "  [FAIL] '$script' exited within ${MARKET_START_GRACE}s (code=$ec)."
+  echo "         Traceback above. Other market scripts are unaffected."
+  FAILED_SCRIPTS+=("$script (exit $ec)")
+  return 1
 }
 
 # Spawn a script under a detached auto-restart watcher.
@@ -139,41 +276,132 @@ persistent_scripts=(
   "./NLP/main_NLP.py"
 )
 
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting persistent (24/7) processes..."
+check_db=(
+  "./src/common/database/test.py"
+  "./src/common/database/create_all_tables.py"
+)
+
+# --- PREFLIGHT: build the run lists -------------------------------------------
+#
+# Validate every script up front so the summary reports everything wrong at
+# once, rather than surfacing problems one launch at a time. Only scripts that
+# pass are added to the *_to_run lists.
+
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Validating scripts..."
+
+check_db_to_run=()
+for script in "${check_db[@]}"; do
+  if validate_script "$script"; then
+    check_db_to_run+=("$script")
+  fi
+done
+
+persistent_to_run=()
 for script in "${persistent_scripts[@]}"; do
+  if validate_script "$script"; then
+    persistent_to_run+=("$script")
+  fi
+done
+
+market_to_run=()
+for script in "${market_scripts[@]}"; do
+  if validate_script "$script"; then
+    market_to_run+=("$script")
+  fi
+done
+
+echo "  Validated: ${#market_to_run[@]}/${#market_scripts[@]} market, ${#persistent_to_run[@]}/${#persistent_scripts[@]} persistent., ${#check_db_to_run[@]}/${#check_db[@]} DB scripts."
+
+# --- LAUNCH -------------------------------------------------------------------
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Running pre-flight DB checks..."
+for script in "${check_db_to_run[@]}"; do
+  echo "  -> Running '$script'..."
+  if ! "$PYTHON_VENV" "$script"; then
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [ERROR] Pre-flight DB check '$script' failed. Exiting."
+    exit 1
+  fi
+
+  if "$PYTHON_VENV" "$./src/common/database/test.py"; then
+    "PYTHON_VENV" "$./src/common/database/create_all_tables.py"
+  fi
+done
+
+
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting persistent (24/7) processes..."
+for script in "${persistent_to_run[@]}"; do
   spawn_persistent "$script"
 done
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting market-hours processes using Python from: ${PYTHON_VENV}"
-
-# Start the market-hours scripts using the venv's python and add their PIDs to the array.
-for script in "${market_scripts[@]}"; do
-  "$PYTHON_VENV" "$script" &
-  pid=$!
-  # Small delay to see if the process crashes immediately
-  sleep 1
-  if ps -p $pid > /dev/null; then
-    echo "  -> Started '$script' successfully with PID: $pid"
-    market_pids+=($pid)
-  else
-    echo "[ERROR] Failed to start '$script'. Check the script for errors."
-    # If one market-hours script fails, shut the other market-hours ones down.
-    # Persistent scripts keep running in the background.
-    echo "Shutting down other started market-hours processes."
-    for p in "${market_pids[@]}"; do kill -SIGTERM "$p"; done
-    exit 1
-  fi
+for script in "${market_to_run[@]}"; do
+  # Failure is recorded inside and deliberately not propagated -- one script
+  # dying must not take the others with it.
+  launch_market_script "$script" || true
 done
 
-echo "All processes started successfully. Market PIDs: ${market_pids[@]}"
+# --- STARTUP SUMMARY ----------------------------------------------------------
+#
+# One place to look to see what is actually running today. A degraded start is
+# loud but not fatal: trading continues with whatever came up.
+
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] ----- startup summary -----"
+echo "  Market processes running: ${#market_pids[@]}/${#market_scripts[@]}"
+
+if [ ${#SKIPPED_SCRIPTS[@]} -gt 0 ]; then
+  echo "  [WARNING] Skipped (failed validation):"
+  for entry in "${SKIPPED_SCRIPTS[@]}"; do echo "    - $entry"; done
+fi
+
+if [ ${#FAILED_SCRIPTS[@]} -gt 0 ]; then
+  echo "  [WARNING] Failed to start (exited during grace period):"
+  for entry in "${FAILED_SCRIPTS[@]}"; do echo "    - $entry"; done
+fi
+
+if [ ${#SKIPPED_SCRIPTS[@]} -eq 0 ] && [ ${#FAILED_SCRIPTS[@]} -eq 0 ]; then
+  echo "  All scripts started cleanly."
+fi
+echo "  ---------------------------"
+
+# Nothing running means there is no market session to watch, so exit non-zero
+# and let ECS surface a failed task rather than idling in the monitor loop.
+if [ ${#market_pids[@]} -eq 0 ]; then
+  echo "[ERROR] No market-hours processes started. Nothing to monitor. Exiting."
+  echo "(Persistent processes, if any, keep running detached.)"
+  exit 1
+fi
+
+echo "Market PIDs: ${market_pids[*]}"
 
 # --- MONITORING LOOP ---
 
+unknown_streak=0
+
 while true; do
+  is_market_open
+  market_status=$?
+
+  # Status 2 = could not determine. Never shut the session down on an API
+  # problem; keep trading and retry. Only give up after a sustained blackout,
+  # so a genuinely stuck check cannot leave processes running indefinitely.
+  if [ "$market_status" -eq 2 ]; then
+    unknown_streak=$(( unknown_streak + 1 ))
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Market status unknown (${unknown_streak}/${UNKNOWN_STATUS_MAX_STREAK}). Leaving processes running."
+
+    if [ "$unknown_streak" -ge "$UNKNOWN_STATUS_MAX_STREAK" ]; then
+      echo "[$(date '+%Y-%m-%d %H:%M:%S')] [ERROR] Market status unknown for ${unknown_streak} consecutive checks (~$(( unknown_streak * 3 )) min). Shutting down market processes as a safety measure."
+      market_status=1
+    else
+      sleep 180
+      continue
+    fi
+  else
+    unknown_streak=0
+  fi
+
   # Check if the market is closed.
-  if ! is_market_open; then
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Market is closed or API check failed. Shutting down MARKET-HOURS processes only."
-    echo "(Persistent processes such as ${persistent_scripts[*]} remain running in the background.)"
+  if [ "$market_status" -ne 0 ]; then
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Market is closed. Shutting down MARKET-HOURS processes only."
+    echo "(Persistent processes such as ${persistent_to_run[*]} remain running in the background.)"
 
     # Loop through stored market PIDs and send a termination signal to each.
     for pid in "${market_pids[@]}"; do
@@ -193,7 +421,27 @@ while true; do
     break # Exit the while loop.
   fi
 
+  # Liveness sweep. A market script that dies mid-session would otherwise be
+  # invisible until close -- the watchdog only tracked the market as a whole.
+  # Report each loss once and keep monitoring the survivors.
+  still_alive=()
+  for pid in "${market_pids[@]}"; do
+    if ps -p "$pid" > /dev/null 2>&1; then
+      still_alive+=("$pid")
+    else
+      echo "[$(date '+%Y-%m-%d %H:%M:%S')] [WARNING] Market process PID $pid exited mid-session."
+      echo "  Traceback above if it crashed. Other processes continue."
+    fi
+  done
+  market_pids=("${still_alive[@]}")
+
+  # Everything died before the close -- nothing left to watch.
+  if [ ${#market_pids[@]} -eq 0 ]; then
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [ERROR] All market processes exited before market close. Exiting watchdog."
+    exit 1
+  fi
+
   # If the market is still open, wait for 3 minutes.
-  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Market is open. Checking again in 3 minutes."
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Market is open (${#market_pids[@]} process(es) alive). Checking again in 3 minutes."
   sleep 180 # 180 seconds = 3 minutes
 done
