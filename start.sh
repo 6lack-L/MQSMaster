@@ -5,10 +5,15 @@
 # This ensures that the script can be run from anywhere, including cron.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# --- !! ACTION REQUIRED !! ---
-# Define the absolute path to the Python executable in your virtual environment.
-# Defaults to the Docker image venv path and can be overridden via PYTHON_VENV.
-PYTHON_VENV=$(pwd)/MQS/bin/python
+# Absolute path to the venv Python. Override by exporting PYTHON_VENV (or
+# setting it in .env, sourced below); otherwise it resolves to the venv beside
+# this script -- which is /app/MQS/bin/python in the Docker image and MQS/bin/
+# python locally, since SCRIPT_DIR is the repo root in both.
+#
+# Anchored to SCRIPT_DIR, not $(pwd): the executable check below runs before the
+# cd into SCRIPT_DIR, so a cwd-relative path breaks every invocation from
+# outside this directory -- cron included.
+PYTHON_VENV="${PYTHON_VENV:-${SCRIPT_DIR}/MQS/bin/python}"
 
 # Load environment variables (like FMP_API_KEY) from the .env file.
 # The .env file should be in the same directory as this script.
@@ -117,8 +122,12 @@ is_market_open() {
     return 2
   fi
 
+  # Only a JSON boolean is a trustworthy answer. `jq -r` would render the
+  # *string* "true" identically to boolean true, so the type is checked here
+  # rather than in the shell -- a changed payload shape must read as UNKNOWN,
+  # not as an open market.
   local status
-  status=$(echo "$normalized" | jq -r '.isMarketOpen')
+  status=$(echo "$normalized" | jq -r 'if (.isMarketOpen | type) == "boolean" then (.isMarketOpen | tostring) else "non-boolean (" + (.isMarketOpen | type) + ")" end')
   case "$status" in
     true)  return 0 ;;
     false) return 1 ;;
@@ -319,10 +328,6 @@ for script in "${check_db_to_run[@]}"; do
   if ! "$PYTHON_VENV" "$script"; then
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] [ERROR] Pre-flight DB check '$script' failed. Exiting."
     exit 1
-  fi
-
-  if "$PYTHON_VENV" "$./src/common/database/test.py"; then
-    "PYTHON_VENV" "$./src/common/database/create_all_tables.py"
   fi
 done
 
