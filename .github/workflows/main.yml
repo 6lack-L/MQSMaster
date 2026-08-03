@@ -162,7 +162,9 @@ jobs:
       
 
   build-and-publish:
-    # CD job: PR build validation + publish/deploy on main pushes.
+    # CD job: PR build validation, plus publish to GHCR on main pushes.
+    # Deployment to ECS is a separate workflow (deploy.yml) that builds and
+    # pushes its own image to ECR -- this job does not deploy anything.
     runs-on: ubuntu-latest
     needs: ci
     if: github.event_name == 'push' || github.event_name == 'pull_request'
@@ -228,27 +230,6 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-
-      - name: Require deployment webhook configuration
-        # Enforce real CD: fail when deployment target is not configured.
-        if: steps.dockerfile.outputs.exists == 'true' && github.event_name == 'push'
-        env:
-          DEPLOY_WEBHOOK_URL: ${{ secrets.DEPLOY_WEBHOOK_URL }}
-        run: |
-          if [ -z "$DEPLOY_WEBHOOK_URL" ]; then
-          echo "DEPLOY_WEBHOOK_URL is not configured. CD requires a deployment target." >&2
-          exit 1
-
-      - name: Trigger deployment webhook
-        # Deploy the newly built image via the configured webhook.
-        if: steps.dockerfile.outputs.exists == 'true' && github.event_name == 'push'
-        env:
-          DEPLOY_WEBHOOK_URL: ${{ secrets.DEPLOY_WEBHOOK_URL }}
-          IMAGE: ghcr.io/${{ github.repository }}:${{ github.sha }}
-        run: |
-          curl -fsSL -X POST "$DEPLOY_WEBHOOK_URL" \
-            -H "Content-Type: application/json" \
-            -d "{\"repository\":\"${{ github.repository }}\",\"sha\":\"${{ github.sha }}\",\"image\":\"$IMAGE\"}"
 
       - name: Skip publish (no Dockerfile)
         # Explain why CD didn't run.
