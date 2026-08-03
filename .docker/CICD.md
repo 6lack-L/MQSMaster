@@ -3,9 +3,13 @@
 ## Pipeline Overview
 
 Workflow files:
-- `.github/workflows/main.yml` — CI and the GHCR image publish.
+- `.github/workflows/main.yml` — CI and the GHCR image publish, on `main`.
+- `.github/workflows/Dev_CI.yml` — the CI that gates `dev` (push and PR).
 - `.github/workflows/deploy.yml` — deploys to ECS. Separate workflow, separate
   registry (ECR), separate trigger.
+
+`main.yml` is `main`-only by design; `dev` is covered by `Dev_CI.yml`. Both
+branches are therefore gated, just by different workflows.
 
 Triggers for `main.yml`:
 - `pull_request` to `main`: runs CI, then CD build validation (no push).
