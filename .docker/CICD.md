@@ -55,12 +55,16 @@ It updates both workloads defined in `MUNQuantSociety/MQS_AWS_INFRA`:
 
 Auth is GitHub OIDC. The job assumes `mqsmaster-prod-github-deploy`; there are no
 long-lived AWS keys in this repo. The role's trust policy pins the OIDC subject
-to `repo:MUNQuantSociety/MQSMaster:ref:refs/heads/main`, so the deploy job must
-**not** declare a job-level `environment:` — that changes the subject claim to
-the environment form and STS rejects the assume-role call.
+to `repo:MUNQuantSociety/MQSMaster:ref:refs/heads/main` and
+`…:ref:refs/heads/dev`. This workflow lives on `dev`, so run it from `dev` or
+`main` — any other branch is rejected by STS. The deploy job must also **not**
+declare a job-level `environment:` — that changes the subject claim to the
+environment form and STS rejects the assume-role call.
 
 The trigger is `workflow_dispatch` only until a manual run is verified end to
-end; add `push: branches: [main]` after that.
+end; `push: branches: [dev]` could be added after that — but note this workflow
+deploys to the **prod** ECS stack, so that would wire every merge into dev
+straight to prod.
 
 The previous `DEPLOY_WEBHOOK_URL` path and `manual-deploy.yml` were removed —
 they posted to a webhook receiver that no longer exists.

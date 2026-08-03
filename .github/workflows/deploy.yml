@@ -4,9 +4,13 @@ name: Build and deploy MQSMaster to ECS
 # (terraform/environments/prod). Auth is GitHub OIDC -- the job assumes
 # mqsmaster-prod-github-deploy via STS; no long-lived AWS keys are stored here.
 #
-# TRIGGER IS workflow_dispatch ONLY, deliberately. The `push: branches: [main]`
+# TRIGGER IS workflow_dispatch ONLY, deliberately. The `push: branches: [dev]`
 # trigger is added once a manual run has been verified end to end, so that
 # enabling this workflow cannot deploy to prod on the merge commit itself.
+#
+# Note what that push trigger would mean here: this workflow deploys to the
+# PROD ECS stack, and it now lives on `dev`. Adding it wires every merge into
+# dev straight to prod. Keep it dispatch-only unless that is intended.
 on:
   workflow_dispatch:
 
@@ -41,7 +45,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-      # The deploy role trusts sub == repo:MUNQuantSociety/MQSMaster:ref:refs/heads/main.
+      # The deploy role trusts sub == repo:MUNQuantSociety/MQSMaster:ref:refs/heads/<branch>
+      # for branch in (main, dev) -- see MQS_AWS_INFRA modules/github-oidc. Running
+      # this workflow from any other branch fails at the assume-role step.
       # Do NOT add a job-level `environment:` here -- that swaps the OIDC subject
       # claim to the environment form and STS will reject the assume-role call.
       - name: Configure AWS credentials via OIDC
