@@ -1,5 +1,12 @@
 # src/common/database/create_all_tables.py
-from .schemaDefinitions import SchemaDefinitions
+if __package__ in (None, ""):
+    import os
+    import sys
+
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
+    from src.common.database.schemaDefinitions import SchemaDefinitions
+else:
+    from .schemaDefinitions import SchemaDefinitions
 
 
 def main():

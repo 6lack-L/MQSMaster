@@ -14,13 +14,14 @@ except Exception as e:
 def test_connection():
     if db is None:
         print("⚠️ Skipping connection test due to initialization failure.")
-        return
+        return 1
     response = db.execute_query("SELECT NOW();", fetch=True)  # Get current timestamp
     if response['status'] == 'success':
         print("✅ PostgreSQL connection successful! Current DB Time:", response['data'][0]['now'])
+        return 0
     else:
         print("❌ Connection failed:", response['message'])
-
+        return 1
 # Run Tests & Setup
 if __name__ == "__main__":
     test_connection()
