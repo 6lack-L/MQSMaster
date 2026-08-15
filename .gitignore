@@ -41,7 +41,6 @@ src/backtest/data/
 # Build artifacts
 build/
 dist/
-**/api_test.py
 typings/
 # Claude Code local worktrees. These are separate git checkouts; committing one
 # lands a gitlink with no .gitmodules entry, which fails actions/checkout with
