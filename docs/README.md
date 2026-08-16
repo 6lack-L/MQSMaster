@@ -54,7 +54,7 @@ flowchart LR
 - [NLP sentiment pipeline](NLP/README.md) — daemon, FinBERT scoring, `news_sentiment` table. **Requires the fine-tuned FinBERT model** to be downloaded into `NLP/finbert-combined-final/` before use — see [NLP setup](NLP/README.md#prerequisite-download-the-finbert-model).
 - [Backfill CLI](BackFill/Readme.md) — `backfill_cli` commands and arguments
 - [Backfill / refresh script](BackFill/refresh_README.md) — `refresh.py` ticker universe updater
-- [Order Management System (proposed)](OMS/OMS_DESIGN.md) — VWAP/TWAP design doc, not yet implemented
+- [Order Management System](OMS/OMS_DESIGN.md) — VWAP/TWAP design doc + current **Implementation Status**. A config-gated (`OMS.enabled`) order-tracking layer is wired into both pipelines today; the VWAP/TWAP algorithms, scheduler thread, and DB persistence in the design are not yet built.
 
 ### Operations
 - [CI / CD](CICD/CICD.md) — pipeline stages, secrets, coverage gate

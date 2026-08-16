@@ -1,15 +1,25 @@
 {
-  "PORTFOLIO_ID": "1",
-  "TICKERS": ["AAPL", "TSLA", "AMD", "MSFT", "NVDA"],
-  "INTERVAL": 60,
-  "LOOKBACK_DAYS": 90,
-  "EXCH": "NASDAQ",
-  "WEIGHTS": {
-    "AAPL": 0.2,
-    "TSLA": 0.2,
-    "AMD": 0.2,
-    "MSFT": 0.2,
-    "NVDA": 0.2
-  },
-  "DATA_FEEDS": ["MARKET_DATA", "POSITIONS", "CASH_EQUITY", "PORT_NOTIONAL"]
+	"PORTFOLIO_ID": "1",
+	"TICKERS": ["AAPL", "TSLA", "AMD", "MSFT", "NVDA"],
+	"INTERVAL": 60,
+	"LOOKBACK_DAYS": 90,
+	"EXCH": "NASDAQ",
+	"WEIGHTS": {
+		"AAPL": 0.2,
+		"TSLA": 0.2,
+		"AMD": 0.2,
+		"MSFT": 0.2,
+		"NVDA": 0.2
+	},
+	"DATA_FEEDS": ["MARKET_DATA", "POSITIONS", "CASH_EQUITY", "PORT_NOTIONAL"],
+	"OMS": {
+		"enabled": true,
+		"default_algo": "TWAP",
+		"duration_minutes": 30,
+		"twap_num_slices": 10,
+		"vwap_bucket_minutes": 15,
+		"vwap_lookback_days": 20,
+		"min_order_notional": 100.0,
+		"fallback_to_market": true
+	}
 }

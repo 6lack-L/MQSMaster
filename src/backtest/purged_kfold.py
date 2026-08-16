@@ -13,7 +13,8 @@ Use case in MQSMaster:
 
 from __future__ import annotations
 
-from typing import Iterator, Optional, Sequence, Tuple
+from collections.abc import Iterator, Sequence
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -25,12 +26,12 @@ class PurgedKFold:
     def __init__(
         self,
         n_splits: int = 5,
-        t1: Optional[pd.Series] = None,
-        embargo_td="pd.Timedelta | float | int",
+        t1: pd.Series = None,
+        embargo_td: str = "pd.Timedelta | float | int",
     ):
         if n_splits < 2:
             raise ValueError(f"n_splits must be >= 2 (got {n_splits}).")
-        if t1 is None or not isinstance(t1, pd.Series):
+        if t1 is None:
             raise ValueError(
                 "t1 must be a pd.Series of label-end times, indexed by sample."
             )
@@ -39,8 +40,8 @@ class PurgedKFold:
 
         if isinstance(embargo_td, (int, float)):
             if 0.0 <= float(embargo_td) <= 1.0:
-                self._embargo_pct = float(embargo_td)
-                self._embargo_td: Optional[pd.Timedelta] = None
+                self._embargo_pct: float = float(embargo_td)
+                self._embargo_td: pd.Timedelta | None = None
             else:
                 raise ValueError("Numeric embargo_td must be a fraction in [0, 1].")
         elif isinstance(embargo_td, pd.Timedelta):
@@ -49,17 +50,25 @@ class PurgedKFold:
         else:
             raise ValueError("embargo_td must be a pd.Timedelta or fraction in [0, 1].")
 
-        self.n_splits = int(n_splits)
-        self.t1 = t1.copy()
+        self.n_splits: int = int(n_splits)
+        self.t1: pd.Series = t1.copy()
 
-    def get_n_splits(self, X=None, y=None, groups=None) -> int:
+    def get_n_splits(self,
+        _X: None = None,
+        _y: None = None,
+        _groups: None = None
+    ) -> int:
         return self.n_splits
 
-    def split(self, X, y=None, groups=None) -> Iterator[Tuple[np.ndarray, np.ndarray]]:
+    def split(self,
+        X,
+        _y = None,
+        _groups = None
+    ) -> Iterator[tuple[np.ndarray, np.ndarray]]:
         n = self._infer_n_samples(X)
         if len(self.t1) != n:
             raise ValueError(
-                f"t1 length ({len(self.t1)}) != X length ({n}); "
+                f"t1 length ({len(self.t1)}) != X length ({n}); " +
                 "t1 must be aligned 1-to-1 with X."
             )
 
@@ -124,7 +133,7 @@ class PurgedKFold:
 
 
 def t1_from_horizon(
-    feature_times: Sequence,
+    feature_times: Sequence[Any],
     horizon: pd.Timedelta,
 ) -> pd.Series:
     """Build a t1 Series for a fixed-horizon label (e.g. h=21d for RBP)."""

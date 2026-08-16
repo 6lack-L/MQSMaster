@@ -1,4 +1,4 @@
-# tests/test_strategy_api.py
+# tests/test_order_interface.py
 
 import logging
 from unittest.mock import Mock
@@ -7,8 +7,8 @@ import pandas as pd
 import pytest
 
 from src.portfolios.market_data_api import AssetData, MarketData
-from src.portfolios.strategy_api import PortfolioManager, StrategyContext
-
+from src.portfolios.order_interface import StrategyContext
+from src.portfolios.portfolio_interface import PortfolioManager
 
 class TestAssetData:
     """Test suite for AssetData class"""
@@ -401,8 +401,12 @@ class TestStrategyContext:
         )
 
         assert context.time == current_time
-        assert isinstance(context.Market, MarketData)
-        assert isinstance(context.Portfolio, PortfolioManager)
+        # Type checked by class name, not isinstance: the dual import idiom
+        # (try `portfolios.*` then `src.portfolios.*`) means StrategyContext may
+        # build these objects from a different module object than the test's
+        # `src.portfolios.*` import, so a cross-path isinstance spuriously fails.
+        assert type(context.Market).__name__ == "MarketData"
+        assert type(context.Portfolio).__name__ == "PortfolioManager"
         assert context.Portfolio.cash == 50000.0
         assert context.Portfolio.total_value == 150000.0
 
@@ -459,6 +463,55 @@ class TestStrategyContext:
         assert call_args["signal_type"] == "BUY"
         assert call_args["confidence"] == 0.8
         assert call_args["portfolio_id"] == "1"
+        # The OMS is not threaded into execute_trade; the executor never sees it
+        # (it is wired at the StrategyContext seam instead).
+        assert "order_manager" not in call_args
+
+    def test_order_manager_path_sizes_and_registers(
+        self,
+        market_data,
+        cash_data,
+        positions_data,
+        port_notional_data,
+        mock_executor,
+        portfolio_config,
+    ):
+        """When an OrderManager is supplied, StrategyContext sizes via the
+        executor's default_trade_size and registers the order with the OMS
+        (which owns execution); it does NOT call execute_trade on that path, and
+        the executor never holds OMS state."""
+        from src.oms.order_manager import OrderManager
+
+        order_manager = OrderManager(portfolio_id="1", config={})
+        # The executor sizes the order to 10 shares (Sizing.quantity == 10).
+        from src.backtest.executor import Sizing
+
+        mock_executor.default_trade_size.return_value = Sizing(
+            quantity=10, desired_notional=1000.0, exec_price=100.0
+        )
+        current_time = pd.Timestamp("2024-01-02", tz="America/New_York")
+
+        context = StrategyContext(
+            market_data_df=market_data,
+            cash_df=cash_data,
+            positions_df=positions_data,
+            port_notional_df=port_notional_data,
+            current_time=current_time,
+            executor=mock_executor,
+            portfolio_config=portfolio_config,
+            order_manager=order_manager,
+        )
+
+        context.buy("AAPL", confidence=0.8)
+
+        # OMS path sizes via default_trade_size and registers the order; the
+        # direct execute_trade fill path is not used.
+        mock_executor.default_trade_size.assert_called_once()
+        mock_executor.execute_trade.assert_not_called()
+        assert len(order_manager.orders_by_id) == 1
+        parent = next(iter(order_manager.orders_by_id.values()))
+        assert parent.total_quantity == 10
+        assert parent.ticker == "AAPL"
 
     def test_sell_method(
         self,

@@ -4,7 +4,7 @@
   "weighting_method": "INV_VOL",
   "score_method": "rank_sum",
   "n_positions": 5,
-  "total_weight": 1.5,
+  "total_weight": 1.5000000000000002,
   "holdings": [
     {
       "ticker": "MSFT",

@@ -2,18 +2,30 @@
 *.xlsx
 *.env
 **/.DS_Store
-__pycache__/
+*.pyc
 *.py[cod]
+*.egg-info/
+*.lock
+.vscode/
+.python-version
+__pycache__/
 data/
 MQS/
+NLP/fetch_state/
+NLP/finbert-combined-final/
+finber_eval_results/
+local-gpt2-model/
+MQS/
+mqs/
 NLP/articles/
 NLP/sentiment_scores/
 NLP/fetch_state/
 NLP/finbert-combined-final/
 NLP/finbert-finetuned-final/
-NLP/daemon.log
-finber_eval_results/
-local-gpt2-model/
+NLP/daemon.log*
+logs/
+src/backtest/data/
+venv/
 visualise_gpt2.ipynb
 *.pyc
 *.egg-info/
@@ -29,4 +41,8 @@ src/backtest/data/
 # Build artifacts
 build/
 dist/
-**/api_test.py
+typings/
+# Claude Code local worktrees. These are separate git checkouts; committing one
+# lands a gitlink with no .gitmodules entry, which fails actions/checkout with
+# "No url found for submodule path".
+.claude/worktrees/

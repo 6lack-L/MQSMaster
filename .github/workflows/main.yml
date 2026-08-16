@@ -34,7 +34,27 @@ jobs:
         python-version: ["3.11", "3.12"]
     permissions:
       contents: read
-    
+
+    # `db`-marked tests run against a throwaway Postgres, not the real database.
+    # mqsmaster-prod-postgres is PubliclyAccessible=false, so a GitHub-hosted
+    # runner can never resolve it -- the old secrets-based lane failed with
+    # "could not translate host name". Services are job-level, so this container
+    # starts on both matrix legs even though only 3.11 uses it.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: mqs_ci
+          POSTGRES_PASSWORD: mqs_ci
+          POSTGRES_DB: mqs_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U mqs_ci -d mqs_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       # Checkout repository
       - name: Checkout
@@ -75,23 +95,55 @@ jobs:
         run: |
           python -m ruff check src tests scripts --select E9,F63,F7,F82 
 
-      # Gate tests on DB secrets
-      - name: Check DB secrets
+      # Create the tables the `db` tests expect in the service container.
+      - name: Bootstrap CI database schema
         if: matrix.python-version == '3.11'
-        id: db
         env:
-          DB_HOST: ${{ secrets.DB_HOST }}
-          DB_PORT: ${{ secrets.DB_PORT }}
-          DB_NAME: ${{ secrets.DB_NAME }}
-          DB_USER: ${{ secrets.DB_USER }}
-          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
-          DB_SSLMODE: ${{ secrets.DB_SSLMODE }}
+          # MQSDBConnector reads lowercase env var names (mirrors .env keys).
+          host: localhost
+          port: 5432
+          database: mqs_ci
+          db_user: mqs_ci
+          password: mqs_ci
+          # The connector defaults sslmode to "require"; the service container
+          # serves plaintext, so this must be disabled explicitly.
+          sslmode: disable
         run: |
-          if [ -n "$DB_HOST" ] && [ -n "$DB_PORT" ] && [ -n "$DB_NAME" ] && [ -n "$DB_USER" ] && [ -n "$DB_PASSWORD" ]; then
-            echo "available=true" >> $GITHUB_OUTPUT
-          else
-            echo "available=false" >> $GITHUB_OUTPUT
-          fi
+          python -m src.common.database.create_all_tables
+          # create_all_tables() returns early on a connection error and `pass`es
+          # on a failed statement, and its __main__ wrapper catches everything --
+          # so it exits 0 whether or not anything was created. Assert the schema
+          # actually landed, otherwise the db tests below fail unexplained.
+          python - <<'PY'
+          import sys
+
+          from src.common.database.MQSDBConnector import MQSDBConnector
+
+          expected = {
+              "cash_equity_book",
+              "market_data",
+              "news_sentiment",
+              "pnl_book",
+              "portfolio_weights",
+              "positions_book",
+              "rbp_forecasts",
+              "risk_book",
+              "trade_execution_logs",
+              "user_creds",
+          }
+          res = MQSDBConnector().execute_query(
+              "SELECT table_name FROM information_schema.tables "
+              "WHERE table_schema = 'public'",
+              fetch=True,
+          )
+          if res["status"] == "error":
+              sys.exit(f"cannot query the CI database: {res['message']}")
+
+          missing = sorted(expected - {row["table_name"] for row in res["data"]})
+          if missing:
+              sys.exit(f"bootstrap did not create: {', '.join(missing)}")
+          print(f"schema OK: {len(expected)} tables present")
+          PY
 
       # Security scan for Python dependencies.
       # Non-blocking initially to avoid breaking pipelines while triaging findings.
@@ -111,17 +163,17 @@ jobs:
             --cov-report=term-missing \
             --cov-report=json
 
-      # Run integration tests if DB secrets exist
+      # Run integration tests against the Postgres service container
       - name: Run integration tests
-        if: matrix.python-version == '3.11' && steps.db.outputs.available == 'true'
+        if: matrix.python-version == '3.11'
         env:
           # MQSDBConnector reads lowercase env var names (mirrors .env keys).
-          host: ${{ secrets.DB_HOST }}
-          port: ${{ secrets.DB_PORT }}
-          database: ${{ secrets.DB_NAME }}
-          db_user: ${{ secrets.DB_USER }}
-          password: ${{ secrets.DB_PASSWORD }}
-          sslmode: "require"
+          host: localhost
+          port: 5432
+          database: mqs_ci
+          db_user: mqs_ci
+          password: mqs_ci
+          sslmode: disable
           FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
           PYTHONWARNINGS: error
         run: |
@@ -142,7 +194,7 @@ jobs:
               --include-glob "src/common/auth/*.py" \
               --include-glob "src/orchestrator/marketData/fmpMarketData.py" \
               --include-glob "src/portfolios/indicators/*.py" \
-              --include-glob "src/portfolios/strategy_api.py" \
+              --include-glob "src/portfolios/order_interface.py" \
               --include-glob "src/main_backtest.py"
           else
             echo "::warning::scripts/check_per_file_coverage.py not found; skipping per-file coverage enforcement."
@@ -162,7 +214,9 @@ jobs:
       
 
   build-and-publish:
-    # CD job: PR build validation + publish/deploy on main pushes.
+    # CD job: PR build validation, plus publish to GHCR on main pushes.
+    # Deployment to ECS is a separate workflow (deploy.yml) that builds and
+    # pushes its own image to ECR -- this job does not deploy anything.
     runs-on: ubuntu-latest
     needs: ci
     if: github.event_name == 'push' || github.event_name == 'pull_request'
@@ -228,27 +282,6 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-
-      - name: Require deployment webhook configuration
-        # Enforce real CD: fail when deployment target is not configured.
-        if: steps.dockerfile.outputs.exists == 'true' && github.event_name == 'push'
-        env:
-          DEPLOY_WEBHOOK_URL: ${{ secrets.DEPLOY_WEBHOOK_URL }}
-        run: |
-          if [ -z "$DEPLOY_WEBHOOK_URL" ]; then
-          echo "DEPLOY_WEBHOOK_URL is not configured. CD requires a deployment target." >&2
-          exit 1
-
-      - name: Trigger deployment webhook
-        # Deploy the newly built image via the configured webhook.
-        if: steps.dockerfile.outputs.exists == 'true' && github.event_name == 'push'
-        env:
-          DEPLOY_WEBHOOK_URL: ${{ secrets.DEPLOY_WEBHOOK_URL }}
-          IMAGE: ghcr.io/${{ github.repository }}:${{ github.sha }}
-        run: |
-          curl -fsSL -X POST "$DEPLOY_WEBHOOK_URL" \
-            -H "Content-Type: application/json" \
-            -d "{\"repository\":\"${{ github.repository }}\",\"sha\":\"${{ github.sha }}\",\"image\":\"$IMAGE\"}"
 
       - name: Skip publish (no Dockerfile)
         # Explain why CD didn't run.

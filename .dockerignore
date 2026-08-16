@@ -13,10 +13,21 @@ MQS/
 MQS/**
 .venv
 .venv/**
-NLP/
-NLP/**
-RBP/
-RBP/**
+# NLP/ and RBP/ must NOT be excluded -- both are imported at runtime:
+#   NLP/main_NLP.py  entrypoint of the always-on NLP ECS service
+#   RBP/             imported by src/orchestrator/rbp_runner.py and
+#                    src/portfolios/portfolio_8/strategy.py. There is no
+#                    src/RBP fallback, so excluding it also broke the market
+#                    task: rbp_runner died on import and start.sh took the
+#                    other market scripts down with it.
+#
+# Scraped article bodies are persisted to the database, so the local copies are
+# build-time weight only (~2.3 MB) and are not read by the running container.
+# NLP/fetch_state is deliberately NOT excluded -- it is small (~44 KB) and the
+# pipeline reads it to resume incremental fetches.
+NLP/articles/
+NLP/articles/**
+
 fetch_state/
 fetch_state/**
 scripts/

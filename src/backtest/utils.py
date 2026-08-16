@@ -137,7 +137,11 @@ def _fetch_from_db(portfolio, tickers: List[str], start, end) -> pd.DataFrame:
     return df
 
 
-def fetch_historical_data(portfolio: BasePortfolio, start_date: datetime, end_date: datetime) -> pd.DataFrame:
+def fetch_historical_data(
+    portfolio: BasePortfolio,
+    start_date: datetime,
+    end_date: datetime
+) -> pd.DataFrame:
     """
     Returns daily OHLCV data for all portfolio tickers in [start_date, end_date].
 

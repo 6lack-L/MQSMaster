@@ -3,15 +3,15 @@ from typing import Dict
 
 try:
     from portfolios.portfolio_BASE.strategy import BasePortfolio
-    from portfolios.strategy_api import StrategyContext
+    from portfolios.order_interface import StrategyContext
 except ImportError as rel_err:
     logging.warning(
-        "Base Portfolio and strategy_api relative import failed; using absolute import. Details: %s",
+        "Base Portfolio and order_interface relative import failed; using absolute import. Details: %s",
         rel_err,
     )
     try:
         from src.portfolios.portfolio_BASE.strategy import BasePortfolio
-        from src.portfolios.strategy_api import StrategyContext
+        from src.portfolios.order_interface import StrategyContext
     except ImportError as abs_err:
         logging.error(
             "Failed to import BasePortfolio and StrategyContext from both relative and absolute paths. Details: %s",
@@ -33,9 +33,10 @@ class CrossoverRmiStrategy(BasePortfolio):
         debug=False,
         config_dict=None,
         backtest_start_date=None,
+        order_manager=None
     ):
         super().__init__(
-            db_connector, executor, debug, config_dict, backtest_start_date
+            db_connector, executor, debug, config_dict, backtest_start_date, order_manager
         )
         self.logger = logging.getLogger(
             f"{self.__class__.__name__}_{self.portfolio_id}"

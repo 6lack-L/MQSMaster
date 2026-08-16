@@ -1,0 +1,165 @@
+name: Build and deploy MQSMaster to ECS
+
+# Deploys to the ECS infrastructure defined in MUNQuantSociety/MQS_AWS_INFRA
+# (terraform/environments/prod). Auth is GitHub OIDC -- the job assumes
+# mqsmaster-prod-github-deploy via STS; no long-lived AWS keys are stored here.
+#
+# Fires after "CI/CD trading sys" (main.yml) succeeds on a push to main, so a
+# prod image is only ever built from a commit that passed lint, both Python
+# matrix legs, the db lane, and the Docker build. workflow_dispatch is kept for
+# manual redeploys and rollbacks.
+#
+# Three things about workflow_run that this file depends on:
+#   1. It also fires for main.yml's `schedule` runs, whose head_branch is also
+#      main. The job guard below requires workflow_run.event == 'push' so the
+#      six-hourly synthetic-monitoring pass cannot deploy.
+#   2. The event runs against the DEFAULT branch, so GITHUB_SHA is main's head,
+#      not necessarily the commit CI validated. Everything below keys off
+#      workflow_run.head_sha instead -- see "Resolve deploy commit".
+#   3. github.ref is refs/heads/main, which is what the deploy role's trust
+#      policy expects.
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["CI/CD trading sys"]
+    types: [completed]
+    branches: [main]
+
+env:
+  AWS_REGION: us-east-2
+  ECR_REPOSITORY: livetradingbot
+  ECS_CLUSTER: mqsmaster-prod-cluster
+  MARKET_TASK_FAMILY: mqsmaster-prod
+  MARKET_CONTAINER_NAME: mqsmaster
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    # workflow_run fires on every completion, including failures and the
+    # scheduled synthetic-monitoring pass -- both must be filtered out here.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main')
+    concurrency:
+      group: deploy-${{ github.ref }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write # required to mint the GitHub OIDC token for AWS
+
+    steps:
+      # On workflow_run, GITHUB_SHA is main's head at event time, which can have
+      # moved past the commit CI actually validated. Build the commit that
+      # passed, not whatever main points at now.
+      - name: Resolve deploy commit
+        id: commit
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            SHA="${{ github.event.workflow_run.head_sha }}"
+          else
+            SHA="${GITHUB_SHA}"
+          fi
+          echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
+          echo "Deploying ${SHA}"
+
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ steps.commit.outputs.sha }}
+
+      # The deploy role trusts sub == repo:MUNQuantSociety/MQSMaster:ref:refs/heads/<branch>
+      # for branch in (main, dev) -- see MQS_AWS_INFRA modules/github-oidc. Running
+      # this workflow from any other branch fails at the assume-role step.
+      # Do NOT add a job-level `environment:` here -- that swaps the OIDC subject
+      # claim to the environment form and STS will reject the assume-role call.
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@4625ce35226a7557230889aae2f52eb50ec3dcda # v2.0.1
+
+      - name: Set image tag
+        id: vars
+        run: echo "image_tag=${{ steps.commit.outputs.sha }}" >> "$GITHUB_OUTPUT"
+
+      # Tagged with the commit SHA only -- deliberately no `latest`. ECS resolves
+      # a tag to a digest at task-launch time, so a `latest` reference would let
+      # the scheduled market run pick up a different image each morning with no
+      # deploy and no record of which build traded. The SHA tag is immutable and
+      # traceable back to a commit. It also keeps this workflow correct whether
+      # or not the ECR repository is set to IMMUTABLE tags -- that setting is not
+      # managed by Terraform (the repo is adopted via a data source).
+      - name: Build and push image
+        id: build
+        env:
+          REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          TAG: ${{ steps.vars.outputs.image_tag }}
+        run: |
+          set -euo pipefail
+          IMAGE_URI="${REGISTRY}/${ECR_REPOSITORY}:${TAG}"
+          docker build -t "${IMAGE_URI}" .
+          docker push "${IMAGE_URI}"
+          echo "image_uri=${IMAGE_URI}" >> "$GITHUB_OUTPUT"
+
+      # --- Market task: register a new revision only. The EventBridge schedule
+      # --- targets the family (unpinned revision), so the next scheduled run
+      # --- picks up the new image on its own -- nothing to roll here.
+      # describe-task-definition returns read-only fields that are not members of
+      # the RegisterTaskDefinition input shape, and the render action does not
+      # strip them -- it only swaps the image. Passing them to
+      # `register-task-definition --cli-input-json` is a ParamValidationError,
+      # so they are deleted here.
+      - name: Download market task definition
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition "${MARKET_TASK_FAMILY}" \
+            --query 'taskDefinition' \
+            | jq 'del(.taskDefinitionArn,.revision,.status,.requiresAttributes,.compatibilities,.registeredAt,.registeredBy,.deregisteredAt)' \
+            > market-task-def.json
+
+      - name: Render market task definition
+        id: render-market
+        uses: aws-actions/amazon-ecs-render-task-definition@aae8639fd04a4d7a54efc92a2bdd638e81a1a7ca # v1.7.4
+        with:
+          task-definition: market-task-def.json
+          container-name: ${{ env.MARKET_CONTAINER_NAME }}
+          image: ${{ steps.build.outputs.image_uri }}
+
+      - name: Register market task revision
+        run: |
+          aws ecs register-task-definition \
+            --cli-input-json file://${{ steps.render-market.outputs.task-definition }} \
+            > /dev/null
+          echo "Registered new revision for ${MARKET_TASK_FAMILY}"
+
+      # NOTE: an NLP workload (task family mqsmaster-prod-nlp, container
+      # mqsmaster-nlp, service mqsmaster-prod-nlp) was targeted here previously,
+      # but none of it exists in the account -- the cluster runs no services at
+      # all. describe-task-definition failed, and because that came *after* the
+      # ECR push and the market revision register, every run half-applied.
+      #
+      # Restoring it needs, in MQS_AWS_INFRA: the task definition, an ECS
+      # service, a /ecs/mqsmaster-prod-nlp log group, and two more actions on
+      # the deploy role (ecs:UpdateService, ecs:DescribeServices, plus
+      # ecs:DescribeTasks/ecs:ListTasks if wait-for-service-stability is used).
+
+      - name: Deployment summary
+        run: |
+          echo "Deployed image ${{ steps.build.outputs.image_uri }}"
+          echo "Registered revision for ${MARKET_TASK_FAMILY}; the"
+          echo "mqsmaster-prod-market-open schedule targets the family unpinned,"
+          echo "so it takes effect at the next weekday 09:30 ET run."

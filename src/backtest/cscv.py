@@ -62,9 +62,9 @@ def cscv_pbo(
     returns_matrix_per_strategy,
     *,
     S: int = 16,
-    metric_func: Optional[Callable[[np.ndarray], float]] = None,
+    metric_func: Callable[[np.ndarray], float] | None = None,
     threshold: float = 0.0,
-) -> Dict[str, object]:
+) -> dict[str, object]:
     """Probability of Backtest Overfitting via CSCV (Bailey et al. 2014)."""
     if S % 2 != 0:
         raise ValueError(f"S must be even (got S={S}).")
@@ -73,8 +73,8 @@ def cscv_pbo(
 
     metric = metric_func or _annualized_sharpe
 
-    M, labels = _coerce_matrix(returns_matrix_per_strategy)
-    T_raw, N = M.shape
+    m, labels = _coerce_matrix(returns_matrix_per_strategy)
+    T_raw, N = m.shape
     if N < 4:
         raise ValueError(
             f"CSCV needs N >= 4 distinct strategies (got N={N}); "
@@ -88,10 +88,10 @@ def cscv_pbo(
             f"need at least 2*S = {2 * S} periods."
         )
     T = block_size * S
-    M = M[:T]
+    m = m[:T]
 
     block_ids = np.arange(S)
-    block_rows: List[np.ndarray] = [
+    block_rows: list[np.ndarray] = [
         np.arange(s * block_size, (s + 1) * block_size) for s in block_ids
     ]
 
@@ -99,10 +99,10 @@ def cscv_pbo(
     splits = list(combinations(block_ids.tolist(), half))
     n_splits = len(splits)
 
-    logits: List[float] = []
-    is_best_metric: List[float] = []
-    oos_best_metric: List[float] = []
-    oos_median_metric: List[float] = []
+    logits: list[float] = []
+    is_best_metric: list[float] = []
+    oos_best_metric: list[float] = []
+    oos_median_metric: list[float] = []
 
     for train_blocks in splits:
         train_set = set(train_blocks)
@@ -111,8 +111,8 @@ def cscv_pbo(
         train_rows = np.concatenate([block_rows[b] for b in sorted(train_blocks)])
         test_rows = np.concatenate([block_rows[b] for b in sorted(test_blocks)])
 
-        J = M[train_rows]
-        J_hat = M[test_rows]
+        J = m[train_rows]
+        J_hat = m[test_rows]
 
         R_is = np.array([metric(J[:, n]) for n in range(N)], dtype=float)
         R_oos = np.array([metric(J_hat[:, n]) for n in range(N)], dtype=float)

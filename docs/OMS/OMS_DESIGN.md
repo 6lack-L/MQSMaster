@@ -17,6 +17,51 @@ The OMS introduces a layer between the strategy's intent ("buy AAPL with 80% con
 
 ---
 
+## 1a. Implementation Status (as of 2026-07-14)
+
+> **Read this before the rest of the document.** Sections 2–10 describe the *target* design. The code on disk implements the OMS core (structures, algorithms, scheduling, fill lifecycle) **and the engine/executor wiring** — with OMS enabled, orders are sliced and actually fill in both pipelines. This section is the source of truth for what exists today.
+
+**What is built — the full in-memory OMS algorithm layer:**
+
+- `src/oms/order_structs.py` — `ParentOrder` / `ChildOrder` dataclasses and the `OrderStatus` / `AlgoType` / `Side` enums (this is the design's `models.py`, renamed). `OrderStatus.EXPIRED` was added as the terminal state for a parent whose schedule ran out before filling; `ChildOrder.attempts` tracks the retry count.
+- `src/oms/sizing/` — the design's `algorithms/` package: `BaseAlgorithm` ABC (`base.py`), `TWAPAlgorithm` (`twap.py`, equal slices at equal intervals, remainder to last slice per §5.4), `VWAPAlgorithm` (`vwap.py`, volume-profile-weighted buckets per §5.5 — the profile is **injected by the caller**, not queried from the DB; missing/invalid profiles degrade to uniform weights), `MarketAlgorithm` (`market.py`, single immediate slice), and a `build_algorithm(algo_type, config)` factory (`__init__.py`).
+- `src/oms/scheduler.py` — a **poll-driven** (not background-thread, see below) priority queue of child orders keyed by `scheduled_time`: `enqueue_children`, `pop_due(now)`, lazy `cancel_parent`, thread-safe under one lock.
+- `src/oms/order_manager.py` — the coordinator: `process_order(...)` now also selects the algorithm (per-order `algo_type` override > `OMS.default_algo` > MARKET, with `min_order_notional` downgrade and `fallback_to_market` handling), generates and enqueues the child schedule, and leaves the parent `WORKING`. `manage_order(now, execute_child)` is the pump: it releases due children, executes them through the injected `execute_child` callable, applies fills via `on_child_filled`, retries a failed child once then cancels it (§5.6), and finalizes exhausted parents (`FILLED` or `EXPIRED`). `cancel_order` cancels queued children too.
+- `src/oms/monitor.py` — read-only execution-quality metrics (side-aware slippage vs arrival in bps, fill %, per-parent summary dicts). This is the observability half of the design's `order_tracker.py`; persistence is not built.
+- Config gating: each portfolio `config.json` carries the `OMS` block from §8. When `OMS.enabled` is true the engine builds a **per-portfolio** `OrderManager` via `src/oms/factory.py`; otherwise it stays `None` and the proven direct-execution path runs unchanged.
+- Unit coverage: `tests/test_oms_algorithms.py` (smoke tier) covers slicing math, algo selection, the pump lifecycle, retry/expiry, and cancellation.
+
+**Deliberate divergence from §5.6:** there is no background `AlgoScheduler` thread. Both pipelines already have a natural clock (the backtest event loop's simulated time; the live portfolio thread's poll interval), so the scheduler is poll-driven via `manage_order(now=...)`. If sub-poll-interval slice timing is ever needed, the thread belongs in the engine layer, calling the same pump.
+
+**Wiring — and where it diverges from §5.8 / §3:**
+
+- **The executor owns sizing, not the OMS.** `process_order` receives an already-sized `total_quantity` and validates it; it does *not* reuse the executor's buying-power/margin logic as §5.2 proposes. Sizing stays in `tradeExecutor.execute_trade` / `BacktestExecutor.execute_trade`.
+- **The entry point is `process_order(...)`, not `submit_order(...)`**, and its signature takes `(portfolio_id, ticker, side, confidence, arrival_price, total_quantity, timestamp, ...)`.
+- **`StrategyContext._trade` still always calls `execute_trade`.** Rather than replacing that call with `submit_order` (as §5.8 shows), the `OrderManager` is **threaded in as an `order_manager` parameter** (`StrategyContext(order_manager=...)` → `execute_trade(order_manager=...)`), and the executor calls `process_order` internally *after* sizing and *before* applying the fill.
+- **`BacktestExecutor` was modified** (§5.8 line 369 claimed it would not be). The two pipelines wire the OMS differently by necessity: **backtest** gives each portfolio its own executor, so the OMS is attached as `executor._order_manager` by `BacktestRunner`; **live** shares one `tradeExecutor` across per-portfolio threads, so attaching a per-portfolio OMS as a mutable attribute would race — it is passed as a call parameter instead. `BacktestExecutor.execute_trade` resolves `order_manager or self._order_manager`, accepting either path.
+- Minor naming drift vs the design: `ParentOrder.signal_type` (not `side`); extra `AlgoType.LIMIT/STOP` and an `OrderType` enum.
+
+**Wiring (built 2026-07-14, ported conceptually from the `sim_scheduler` branch with its flaws fixed):**
+
+- `execute_child_order(...)` exists on **both** executors — the concrete `execute_child` seam for `manage_order`. Contract: takes one `ChildOrder`, returns `{"status": "success", "filled_quantity": float, "fill_price": float}`; any error dict/exception routes to the OMS retry-then-cancel path. Neither re-sizes — the parent was sized through `default_trade_size` (buying power + RBP overlay) at creation.
+  - `BacktestExecutor.execute_child_order(child, timestamp)` settles into the executor's own unified state at the current simulated price, applying the per-slice cost model (each slice pays impact on its own smaller notional — that is the measurable benefit of slicing).
+  - `tradeExecutor.execute_child_order(child, cash, positions, port_notional, timestamp=None)` settles via `update_database`. **Portfolio state is passed in by the caller and must be fetched at fill time** (the engine adapter re-runs the portfolio's atomic state query per fill). This is the deliberate fix for `sim_scheduler`'s submit-time state snapshots, which wrote stale absolute cash/position values.
+- **Backtest pump:** `BacktestRunner._run_event_loop` pumps `manage_order(now=sim_time, ...)` at **every bar**, before the strategy poll gate, so slices fill at intermediate bars instead of bunching at the next poll. Behavior-neutral for non-OMS runs.
+- **Live pump:** `RunEngine` runs one dedicated `oms-pump` thread (default `oms_tick_seconds=5.0`) that pumps every OMS-enabled portfolio's `OrderManager` with wall-clock NY time, and on shutdown drains via `OrderManager.cancel_all_open_orders` so the session ends with terminal order states only. The per-portfolio `OrderManager` reaches execution as a closure — nothing is ever attached to the shared `tradeExecutor`. `OrderManager` is internally locked (portfolio thread submits while the pump thread executes).
+- **Direction rule:** the OMS side is derived from the **sign** of `default_trade_size`'s `desired_notional` in `StrategyContext._trade` — identical to `execute_trade`'s settlement rule — so a BUY signal on an over-weighted position is worked as a SELL (trim), never a buy-more.
+- Children are self-contained for execution: `portfolio_id` / `arrival_price` / `confidence` are copied from the parent at schedule generation (identity only — never portfolio state).
+- Wiring coverage: `tests/test_oms_execution.py`.
+
+**Not built yet:**
+
+- A VWAP volume-profile provider (the §5.5 `market_data` query) feeding `process_order(volume_profile=...)`; without it VWAP runs with uniform weights.
+- DB persistence (§6): the `oms_parent_orders` / `oms_child_orders` tables and the write half of `order_tracker.py` do not exist — orders live only in `OrderManager.orders_by_id` in memory. `OrderMonitor.summarize` already produces the row shape to serialize.
+- LIMIT / STOP order types (`src/oms/order_types/` is a documented placeholder; both enum values currently fall back to MARKET when `fallback_to_market` is true).
+
+**Net effect today:** with `OMS.enabled`, every trade is sized by the executor, registered as a parent order, sliced per the configured algorithm, and **executed slice-by-slice** — per-bar in backtest, on a 5-second tick in live — with per-slice slippage vs the parent's arrival price recorded in the trade logs. Portfolios with `OMS.enabled: false` are untouched. The full live pipeline (DB + FMP) has not been exercised end-to-end.
+
+---
+
 ## 2. Current Architecture (Before OMS)
 
 ```
@@ -95,7 +140,7 @@ src/
 │   └── engine.py                     # MODIFIED — starts/stops OMS scheduler thread
 │
 ├── portfolios/
-│   └── strategy_api.py              # MODIFIED — StrategyContext routes through OMS
+│   └── order_interface.py              # MODIFIED — StrategyContext routes through OMS
 │
 └── common/
     └── database/
@@ -337,7 +382,7 @@ Writes order lifecycle events to two new database tables (see Section 6). Provid
 
 ### 5.8 Modifications to Existing Files
 
-#### `strategy_api.py` — StrategyContext._trade()
+#### `order_interface.py` — StrategyContext._trade()
 
 Current:
 ```python
@@ -532,5 +577,5 @@ The `OrderManager` can auto-select based on a simple heuristic:
 7. `src/oms/order_manager.py` — Coordinator (ties everything together)
 8. Modify `src/live_trading/executor.py` — Add `execute_child_order()`
 9. Modify `src/live_trading/engine.py` — Wire up OMS lifecycle
-10. Modify `src/portfolios/strategy_api.py` — Route through OMS
+10. Modify `src/portfolios/order_interface.py` — Route through OMS
 11. Update `src/common/database/schemaDefinitions.py` — New tables

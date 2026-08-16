@@ -12,8 +12,9 @@ PROJECT_ROOT: Path = NLP_DIR.parent
 ARTICLES_DIR: Path = NLP_DIR / "articles"
 SCORES_DIR: Path = NLP_DIR / "sentiment_scores"
 STATE_DIR: Path = NLP_DIR / "fetch_state"
-MODEL_DIR: Path = NLP_DIR / "finbert-finetuned-final"
-DAEMON_LOG_FILE: Path = NLP_DIR / "daemon.log"
+MODEL_DIR: Path = NLP_DIR / "finbert-combined-final"
+LOGS_DIR: Path = PROJECT_ROOT / "logs"
+DAEMON_LOG_FILE: Path = LOGS_DIR / "daemon.log"
 
 
 def ensure_project_root_on_path() -> None:

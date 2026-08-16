@@ -23,7 +23,6 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from typing import List
 
 logger = logging.getLogger(__name__)
 
@@ -43,13 +42,16 @@ class FMPRateLimiter:
     _instances: dict[str, "FMPRateLimiter"] = {}
     _instances_lock = threading.Lock()
 
-    def __init__(self, max_requests_per_min: int, label: str = "fmp"):
+    def __init__(self,
+        max_requests_per_min: int,
+        label: str = "fmp"
+    ):
         if max_requests_per_min <= 0:
             raise ValueError("max_requests_per_min must be > 0")
-        self.max_requests_per_min = max_requests_per_min
-        self.window_seconds = WINDOW_SECONDS
-        self.label = label
-        self._timestamps: List[float] = []
+        self.max_requests_per_min: int = max_requests_per_min
+        self.window_seconds: int = WINDOW_SECONDS
+        self.label: str = label
+        self._timestamps: list[float] = []
         self._lock = threading.Lock()
 
     @classmethod

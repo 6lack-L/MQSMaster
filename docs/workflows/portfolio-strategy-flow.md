@@ -100,6 +100,8 @@ sequenceDiagram
     end
 ```
 
+When a portfolio's `config.json` sets `OMS.enabled`, an `OrderManager` is threaded into `execute_trade` (via `StrategyContext(order_manager=...)`); the executor registers a parent order with it after sizing and before applying the fill. This is an opt-in tracking layer only — the fill still flows through the same `execute_trade` path shown above. See [OMS implementation status](../OMS/OMS_DESIGN.md#1a-implementation-status-as-of-2026-06-13).
+
 `generate_signals_and_trade()` always tracks `_last_processed_timestamp`; only bars strictly newer than that are fed to indicators. This makes the path correct for both live polling (where `current_time=None` so the latest bar is used) and backtest replay (where `current_time` is the simulated clock).
 
 ## Indicator Factory

@@ -7,10 +7,10 @@ This guide documents the NLP article scraping and sentiment pipeline in detail. 
 Before running any sentiment scoring path, download the fine-tuned FinBERT model and place it inside the `NLP/` directory. The model is **not** committed to the repo.
 
 1. Download from: <https://drive.google.com/drive/folders/1v7NjSuyFq4CTIctrw1bSv13JzkkMg1l8?usp=sharing>
-2. Place the folder so the final path is `NLP/finbert-finetuned-final/`.
+2. Place the folder so the final path is `NLP/finbert-combined-final/`.
 3. The directory must contain the model weights and tokenizer files (`config.json`, `tokenizer.json`, `model.safetensors`, etc.).
 
-`NLP/sentiment/scorer.py` (re-exported from `NLP/sentiment_processor.py`) resolves the default model directory as `NLP/finbert-finetuned-final`. **There is no HuggingFace fallback**: a missing model directory now raises `FileNotFoundError` at scorer init. The earlier `ProsusAI/finbert` fallback used a different label index ordering (positive/negative/neutral) than our fine-tuned model (positive/neutral/negative), so `probs[:, 0] - probs[:, 2]` produced silently wrong scores on the fallback path. Download the fine-tuned model before running any sentiment path.
+`NLP/sentiment/scorer.py` (re-exported from `NLP/sentiment_processor.py`) resolves the default model directory as `NLP/finbert-combined-final`. **There is no HuggingFace fallback**: a missing model directory now raises `FileNotFoundError` at scorer init. The earlier `ProsusAI/finbert` fallback used a different label index ordering (positive/negative/neutral) than our fine-tuned model (positive/neutral/negative), so `probs[:, 0] - probs[:, 2]` produced silently wrong scores on the fallback path. Download the fine-tuned model before running any sentiment path.
 
 ## Overview
 
@@ -199,7 +199,7 @@ Examples:
 
 ### Model assets
 
-The FinBERT model lives in `NLP/finbert-finetuned-final/`. This folder is **not** in the repo — download it from the Google Drive link in [Prerequisite: Download the FinBERT Model](#prerequisite-download-the-finbert-model) and place it under `NLP/` before running the pipeline.
+The FinBERT model lives in `NLP/finbert-combined-final/`. This folder is **not** in the repo — download it from the Google Drive link in [Prerequisite: Download the FinBERT Model](#prerequisite-download-the-finbert-model) and place it under `NLP/` before running the pipeline.
 
 ## Ticker Universe and Batching
 
@@ -282,7 +282,7 @@ If this cost becomes a problem at full ~1900-ticker scale, options are:
 
 ## Monitoring and Logs
 
-`NLPRunner` writes logs to `NLP/daemon.log` and reports:
+`NLPRunner` writes logs to `logs/daemon.log` and reports:
 
 - batch startup and completion
 - fetch status per ticker

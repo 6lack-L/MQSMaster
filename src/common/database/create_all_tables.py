@@ -1,6 +1,12 @@
 # src/common/database/create_all_tables.py
-from .MQSDBConnector import MQSDBConnector
-from .schemaDefinitions import SchemaDefinitions
+if __package__ in (None, ""):
+    import os
+    import sys
+
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
+    from src.common.database.schemaDefinitions import SchemaDefinitions
+else:
+    from .schemaDefinitions import SchemaDefinitions
 
 
 def main():
@@ -8,7 +14,7 @@ def main():
     Main function to initialize the database by creating all tables.
     """
     print("Attempting to connect to the database and create tables...")
-    
+
     try:
         # 1. Create an instance of the SchemaDefinitions class.
         #    This will also initialize the database connection via MQSDBConnector.

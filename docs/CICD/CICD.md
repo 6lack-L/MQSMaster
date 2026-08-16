@@ -81,7 +81,7 @@ python -m pytest -q -m "not db and not api" --cov=src --cov-report=term-missing 
 4. Per-file coverage gate (same scope as CI):
 
 ```powershell
-python scripts/check_per_file_coverage.py --min 50 --coverage-file coverage.json --include-glob "src/backtest/*.py" --include-glob "src/common/auth/*.py" --include-glob "src/orchestrator/marketData/fmpMarketData.py" --include-glob "src/portfolios/indicators/*.py" --include-glob "src/portfolios/strategy_api.py" --include-glob "src/main_backtest.py"
+python scripts/check_per_file_coverage.py --min 50 --coverage-file coverage.json --include-glob "src/backtest/*.py" --include-glob "src/common/auth/*.py" --include-glob "src/orchestrator/marketData/fmpMarketData.py" --include-glob "src/portfolios/indicators/*.py" --include-glob "src/portfolios/order_interface.py" --include-glob "src/main_backtest.py"
 ```
 
 5. DB integration tests (if secrets configured):
@@ -109,7 +109,7 @@ The per-file gate intentionally targets tested, production-critical modules and 
 - `src/common/auth/*.py`
 - `src/orchestrator/marketData/fmpMarketData.py`
 - `src/portfolios/indicators/*.py`
-- `src/portfolios/strategy_api.py`
+- `src/portfolios/order_interface.py`
 - `src/main_backtest.py`
 
 As additional modules get tests, add them to the include list in `.github/workflows/main.yml`.

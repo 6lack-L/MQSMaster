@@ -1,9 +1,7 @@
 import logging
 
 try:
-    from common.database.MQSDBConnector import (
-        MQSDBConnector,
-    )
+    from .MQSDBConnector import MQSDBConnector
 except ImportError:
     logging.warning("MQSDBConnector relative import failed; using absolute import.")
     from src.common.database.MQSDBConnector import MQSDBConnector
@@ -16,7 +14,7 @@ class SchemaDefinitions:
     """
 
     def __init__(self):
-        self.db = MQSDBConnector()
+        self.db: MQSDBConnector = MQSDBConnector()
 
     def create_all_tables(self):
         """
@@ -35,7 +33,6 @@ class SchemaDefinitions:
             password VARCHAR(100) NOT NULL
         );
         """
-
         create_market_data_table = """
         CREATE TABLE IF NOT EXISTS market_data (
             id SERIAL PRIMARY KEY,
@@ -52,7 +49,6 @@ class SchemaDefinitions:
             created_at TIMESTAMP DEFAULT NOW()
         );
         """
-
         create_trade_logs_table = """
         CREATE TABLE IF NOT EXISTS trade_execution_logs (
             trade_id SERIAL PRIMARY KEY,
@@ -71,7 +67,6 @@ class SchemaDefinitions:
             created_at TIMESTAMP DEFAULT NOW()
         );
         """
-
         create_pnl_book_table = """
         CREATE TABLE IF NOT EXISTS pnl_book (
             pnl_id SERIAL PRIMARY KEY,
@@ -86,7 +81,6 @@ class SchemaDefinitions:
             created_at TIMESTAMP DEFAULT NOW()
         );
         """
-
         create_risk_book_table = """
         CREATE TABLE IF NOT EXISTS risk_book (
             risk_id SERIAL PRIMARY KEY,
@@ -98,7 +92,6 @@ class SchemaDefinitions:
             created_at TIMESTAMP DEFAULT NOW()
         );
         """
-
         create_cash_equity_book_table = """
         CREATE TABLE IF NOT EXISTS cash_equity_book (
             id SERIAL PRIMARY KEY,
@@ -132,17 +125,6 @@ class SchemaDefinitions:
             UNIQUE (portfolio_id, ticker, date, model) -- Ensures one weight per asset, per portfolio, per day, per model
             );
         """
-        create_news_sentiment_table = """
-            CREATE TABLE news_sentiment (
-            id SERIAL PRIMARY KEY,
-            ticker VARCHAR(10),
-            article_url TEXT,
-            published_at TIMESTAMP,
-            sentiment_score FLOAT, -- Range: -1.0 to 1.0
-            content_summary TEXT
-            );
-
-        """
 
         create_news_sentiment_table = """
         CREATE TABLE IF NOT EXISTS news_sentiment (
@@ -150,12 +132,11 @@ class SchemaDefinitions:
             ticker VARCHAR(10),
             article_url TEXT,
             published_at TIMESTAMP,
-            sentiment_score FLOAT,
+            sentiment_score FLOAT, -- Range: -1.0 to 1.0
             content_summary TEXT,
             created_at TIMESTAMP DEFAULT NOW()
         );
         """
-
         create_rbp_forecasts_table = """
         CREATE TABLE IF NOT EXISTS rbp_forecasts (
             id            BIGSERIAL PRIMARY KEY,
@@ -169,7 +150,6 @@ class SchemaDefinitions:
             UNIQUE (ticker, asof, horizon_days, model_version)
         );
         """
-
         create_rbp_forecasts_index = """
         CREATE INDEX IF NOT EXISTS idx_rbp_forecasts_ticker_asof
             ON rbp_forecasts (ticker, asof DESC);
@@ -192,5 +172,5 @@ class SchemaDefinitions:
         for stmt in statements:
             result = self.db.execute_query(stmt)
             if result["status"] == "error":
-                print("Error creating table:", result["message"])
+                pass  #continue with the next statement logging happens within the execute_query method
         print("All tables created or confirmed to exist.")

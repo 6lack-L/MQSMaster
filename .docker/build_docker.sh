@@ -18,4 +18,6 @@ if [ ! -f "$DOCKERFILE" ]; then
 fi
 
 # Build the Docker image from the repo root and apply the tag.
-docker build -t "$IMAGE_TAG" "$ROOT_DIR"
+docker buildx build -t "$IMAGE_TAG" "$ROOT_DIR"
+docker tag "$IMAGE_TAG" munquant/trading-bot:latest
+docker push munquant/"${IMAGE_TAG}"
