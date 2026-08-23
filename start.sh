@@ -205,7 +205,7 @@ launch_market_script() {
   # bad credentials surface well inside this window.
   sleep "$MARKET_START_GRACE"
 
-  if ps -p "$pid" > /dev/null 2>&1; then
+  if kill -0 "$pid" 2>/dev/null; then
     echo "  [OK]   '$script' running (PID: $pid)"
     market_pids+=("$pid")
     return 0
@@ -221,6 +221,22 @@ launch_market_script() {
   return 1
 }
 
+# Check whether any process's command line contains $1, without relying on
+# procps (pgrep/ps) -- minimal base images often lack that package entirely,
+# which would otherwise make this check silently pass every time. /proc is
+# part of the kernel, not a package, so this works anywhere Linux does.
+is_process_running() {
+  local pattern="$1"
+  local pid_dir
+  for pid_dir in /proc/[0-9]*; do
+    [ -r "${pid_dir}/cmdline" ] || continue
+    if tr '\0' ' ' < "${pid_dir}/cmdline" 2>/dev/null | grep -qF -- "$pattern"; then
+      return 0
+    fi
+  done
+  return 1
+}
+
 # Spawn a script under a detached auto-restart watcher.
 # - Skips spawn if the script is already running (avoids duplicates on daily re-runs).
 # - Survives termination of this start.sh (nohup + disown).
@@ -231,7 +247,7 @@ spawn_persistent() {
   script_name=$(basename "$script" .py)
   local logfile="${PERSISTENT_LOG_DIR}/${script_name}.watcher.log"
 
-  if pgrep -f "$script" > /dev/null 2>&1; then
+  if is_process_running "$script"; then
     echo "  -> '$script' is already running. Skipping persistent spawn."
     return 0
   fi
@@ -411,7 +427,7 @@ while true; do
     # Loop through stored market PIDs and send a termination signal to each.
     for pid in "${market_pids[@]}"; do
       # Check if the process still exists before trying to kill it
-      if ps -p "$pid" > /dev/null; then
+      if kill -0 "$pid" 2>/dev/null; then
         echo "  -> Sending SIGTERM to process with PID: $pid"
         kill -SIGTERM "$pid"
       else
@@ -431,7 +447,7 @@ while true; do
   # Report each loss once and keep monitoring the survivors.
   still_alive=()
   for pid in "${market_pids[@]}"; do
-    if ps -p "$pid" > /dev/null 2>&1; then
+    if kill -0 "$pid" 2>/dev/null; then
       still_alive+=("$pid")
     else
       echo "[$(date '+%Y-%m-%d %H:%M:%S')] [WARNING] Market process PID $pid exited mid-session."
