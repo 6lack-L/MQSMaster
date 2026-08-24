@@ -4,16 +4,16 @@ import time
 from typing import Any
 
 import psycopg2
-from psycopg2.extensions import connection
 import psycopg2.extras
-from psycopg2.pool import ThreadedConnectionPool
 from dotenv import load_dotenv
+from psycopg2.extensions import connection
+from psycopg2.pool import ThreadedConnectionPool
 
 # Configure logging for better debugging and tracing.
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
 
 # Load environment variables
-if (load_dotenv() is False):
+if load_dotenv() is False:
     logging.error("Failed to load environment variables")
 
 
@@ -156,10 +156,8 @@ class MQSDBConnector:
         except Exception as e:
             logging.error("Error closing connections: %s", e)
 
-    def execute_query(self,
-        sql: str | bytes,
-        values: tuple[Any] | None = None,
-        fetch: bool=False
+    def execute_query(
+        self, sql: str | bytes, values: tuple[Any] | None = None, fetch: bool = False
     ) -> dict[str, Any]:
         """
         Executes a query with optional parameters.
@@ -205,11 +203,12 @@ class MQSDBConnector:
         sql = f"INSERT INTO {schema_str}{table} ({columns}) VALUES ({placeholders})"
         return self.execute_query(sql, tuple(data.values()))
 
-    def bulk_inject_to_db(self,
+    def bulk_inject_to_db(
+        self,
         table,
         data: list[dict[Any, Any]],
         conflict_columns: list[str] = [""],
-        schema: str = ""
+        schema: str = "",
     ) -> dict[str, str]:
         """
         Efficiently inserts multiple rows into a table using execute_values.
@@ -242,7 +241,9 @@ class MQSDBConnector:
                 values = [[row[col] for col in columns] for row in data]
 
                 psycopg2.extras.execute_values(cursor, sql, values)
-                inserted_count = cursor.rowcount - len(conflict_columns)  # Adjust for ignored rows due to conflicts
+                inserted_count = cursor.rowcount - len(
+                    conflict_columns
+                )  # Adjust for ignored rows due to conflicts
                 conn.commit()
 
                 return {
@@ -260,11 +261,8 @@ class MQSDBConnector:
         finally:
             self.release_connection(conn)
 
-    def update_data(self,
-        table,
-        data,
-        conditions: dict[Any, Any],
-        schema: str = "public"
+    def update_data(
+        self, table, data, conditions: dict[Any, Any], schema: str = "public"
     ) -> dict[str, str]:
         """
         Updates records in a table based on provided conditions.
@@ -273,16 +271,14 @@ class MQSDBConnector:
             return {"status": "error", "message": "No conditions provided for update."}
 
         set_clause = ", ".join([f"{col} = %s" for col in data.keys()])
-        where_clause = " AND ".join([f"{col} = %s" for col in conditions.keys()])
+        where_clause = " AND ".join([f"{col} = %s" for col in conditions])
         schema_str = f"{schema}." if schema else ""
         sql = f"UPDATE {schema_str}{table} SET {set_clause} WHERE {where_clause}"
         values = list(data.values()) + list(conditions.values())
         return self.execute_query(sql, tuple(values))
 
-    def delete_data(self,
-        table,
-        conditions: dict[Any, Any],
-        schema: str = "public"
+    def delete_data(
+        self, table, conditions: dict[Any, Any], schema: str = "public"
     ) -> dict[str, str]:
         """
         Deletes records matching the provided conditions.
@@ -293,17 +289,13 @@ class MQSDBConnector:
                 "message": "No conditions provided for deletion.",
             }
 
-        where_clause = " AND ".join([f"{col} = %s" for col in conditions.keys()])
+        where_clause = " AND ".join([f"{col} = %s" for col in conditions])
         schema_str = f"{schema}." if schema else ""
         sql = f"DELETE FROM {schema_str}{table} WHERE {where_clause}"
         return self.execute_query(sql, tuple(conditions.values()))
 
-    def read_db(self,
-        table=None,
-        columns="*",
-        conditions=None,
-        schema=None,
-        sql=None
+    def read_db(
+        self, table=None, columns="*", conditions=None, schema=None, sql=None
     ) -> dict[str, str]:
         """
         Retrieves data from the database.
@@ -316,7 +308,9 @@ class MQSDBConnector:
         query = f"SELECT {columns} FROM {schema_str}{table}"
         values = None
         if conditions:
-            where_clause: str = " AND ".join([f"{col} = %s" for col in conditions.keys()])
+            where_clause: str = " AND ".join(
+                [f"{col} = %s" for col in conditions.keys()]
+            )
             query += f" WHERE {where_clause}"
             values = tuple(conditions.values())
         return self.execute_query(query, values, fetch=True)

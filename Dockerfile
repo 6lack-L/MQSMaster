@@ -38,10 +38,15 @@ ENV PATH="/app/MQS/bin:$PATH"
 RUN groupadd -g 1001 appgroup && \
     useradd -u 1001 -g appgroup -m -d /app -s /bin/bash appuser
 
+# start.sh shells out to curl (FMP market-hours check) and jq (parsing the response)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends curl jq && \
+    rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 COPY --from=build --chown=appuser:appgroup /app .
 
 USER appuser
 # Default command (runs the live trading entrypoint)
-CMD ["python", "-m", "src.main"]
+CMD ["bash", "start.sh"]
