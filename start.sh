@@ -297,9 +297,16 @@ market_scripts=(
 # Scripts that run 24/7 with auto-restart, detached from this start.sh.
 # Even after the market-hours watchdog exits, these keep running and will
 # survive crashes via the spawn_persistent supervisor loop.
-persistent_scripts=(
-  "./NLP/main_NLP.py"
-)
+#
+# Set SKIP_PERSISTENT_SCRIPTS=1 (e.g. via ECS task env) when NLP runs as its
+# own separate service/task, so this instance doesn't also spawn it.
+if [ "${SKIP_PERSISTENT_SCRIPTS:-0}" = "1" ]; then
+    persistent_scripts=()
+else
+    persistent_scripts=(
+      "./NLP/main_NLP.py"
+    )
+fi
 
 check_db=(
   "./src/common/database/test.py"
