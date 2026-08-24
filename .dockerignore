@@ -13,6 +13,20 @@ MQS/
 MQS/**
 .venv
 .venv/**
+.coverage
+.gitignore
+CLAUDE.md
+pytest.ini
+TODO.md
+.docker/
+.docker/**
+.claude/
+.claude/**
+.opencode/
+.opencode/**
+.pytest_cache/
+data/**
+logs/**
 # NLP/ and RBP/ must NOT be excluded -- both are imported at runtime:
 #   NLP/main_NLP.py  entrypoint of the always-on NLP ECS service
 #   RBP/             imported by src/orchestrator/rbp_runner.py and
@@ -27,7 +41,8 @@ MQS/**
 # pipeline reads it to resume incremental fetches.
 NLP/articles/
 NLP/articles/**
-
+tests/
+tests/**
 fetch_state/
 fetch_state/**
 scripts/
